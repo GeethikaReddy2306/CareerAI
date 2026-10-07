@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #07111f;
+  --color-panel: #0e1a2e;
+  --color-line: #1e334f;
+  --color-mint: #3ee0c2;
+  --color-gold: #f3c46b;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 10% -10%, #123057 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #0c3d38 0%, transparent 45%),
+    #07111f;
+  color: #e8eef8;
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+}
+
+::selection {
+  background: #3ee0c2;
+  color: #07111f;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+.score-ring {
+  background: conic-gradient(#3ee0c2 var(--p), #1e334f 0);
+}

@@ -1,0 +1,34 @@
+# Environment
+.env
+.env.local
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing & Linting
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Uploads (keep directory structure, ignore uploaded files)
+uploads/resumes/*
+!uploads/resumes/.gitkeep
+
+# SQLite database for tests / fallback
+*.db
+*.sqlite3
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+

@@ -1,0 +1,438 @@
+{
+  "results": [
+    {
+      "api": "Root health",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200 {\"success\":true,\"message\":\"AI-Powered Career Intelligence Platform API is active\",\"version\":\"1.0.0\",\"docs_url\":\"/docs\"}"
+    },
+    {
+      "api": "GET /health (not implemented)",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "OpenAPI docs",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200"
+    },
+    {
+      "api": "OpenAPI paths",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "/, /api/auth/login, /api/auth/me, /api/auth/register, /api/career-readiness, /api/career/roadmap, /api/interview/questions, /api/job-analysis, /api/resumes, /api/resumes/upload, /api/resumes/{resume_id}, /api/resumes/{resume_id}/analysis, /api/resumes/{resume_id}/analyze, /api/resumes/{resume_id}/ats-score, /api/skill-gap"
+    },
+    {
+      "api": "Register",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 {\"success\":true,\"message\":\"User registered successfully\",\"data\":{\"name\":\"API Test User\",\"email\":\"apitest.a.1789904244@example.com\",\"id\":3,\"created_at\":\"2026-09-20T11:37:25\",\"update"
+    },
+    {
+      "api": "Register duplicate email",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "400 {\"success\":false,\"message\":\"Email is already registered\"}"
+    },
+    {
+      "api": "Register invalid email",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Register weak password (<6)",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422 {\"success\":false,\"message\":\"Validation error\",\"detail\":[{\"type\":\"string_too_short\",\"loc\":[\"body\",\"password\"],\"msg\":\"Stri"
+    },
+    {
+      "api": "Register missing name",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Login",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "200"
+    },
+    {
+      "api": "Login invalid password",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Login nonexistent user",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Me",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200 {\"name\":\"API Test User\",\"email\":\"apitest.a.1789904244@example.com\",\"id\":3}"
+    },
+    {
+      "api": "Me missing token",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Missing token leak check",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "no secrets"
+    },
+    {
+      "api": "Me invalid token",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "401 {\"success\":false,\"message\":\"Could not validate credentials\"}"
+    },
+    {
+      "api": "Invalid token leak check",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "no secrets"
+    },
+    {
+      "api": "Register User B",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201"
+    },
+    {
+      "api": "Resume Upload",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 {\"id\":3,\"filename\":\"resume.pdf\",\"message\":\"Resume uploaded and parsed successfully\",\"text_length\":607}"
+    },
+    {
+      "api": "Upload invalid extension",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "400"
+    },
+    {
+      "api": "Upload invalid MIME",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "400"
+    },
+    {
+      "api": "Upload oversized",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "413"
+    },
+    {
+      "api": "Upload empty-ish PDF",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 {\"id\":4,\"filename\":\"empty.pdf\",\"message\":\"Resume uploaded and parsed successfully\",\"text_length\":0}"
+    },
+    {
+      "api": "Upload corrupted PDF",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "400 {\"success\":false,\"message\":\"Failed to extract text from PDF. The file may be corrupted or unreadable.\"}"
+    },
+    {
+      "api": "Corrupted PDF leak check",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "no secrets"
+    },
+    {
+      "api": "List resumes User A",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200 count=2"
+    },
+    {
+      "api": "List isolation User B empty/other",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200 []"
+    },
+    {
+      "api": "Resume parsing content",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "len=607 has=['Priya', 'Python', 'FastAPI', 'B.Tech', 'Job Matcher', 'AWS']"
+    },
+    {
+      "api": "IDOR ownership (User B vs User A resume)",
+      "method": "MIX",
+      "status": "PASS",
+      "detail": "GET /api/resumes/3 -> 404; POST /api/resumes/3/analyze -> 404; POST /api/resumes/3/ats-score -> 404; GET /api/resumes/3/analysis -> 404; POST /api/job-analysis -> 404; POST /api/skill-gap -> 404; GET /api/career-readiness?resume_id=3&target_role=Backend%20Developer -> 404; POST /api/career/roadmap -> 404; POST /api/interview/questions -> 404"
+    },
+    {
+      "api": "Resume Analysis",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "200 skills=['Python', 'FastAPI', 'SQL', 'PostgreSQL', 'Docker', 'AWS', 'Git'] strengths=['Technical proficiency across 7 relevant skills', 'Clear section organization and career focus']"
+    },
+    {
+      "api": "Analyze invalid resume ID",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "Analyze missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Analyze empty PDF text",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "400 {\"success\":false,\"message\":\"The resume contains no readable extracted text to analyze.\"}"
+    },
+    {
+      "api": "ATS Score",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "200 {\"score\": 83, \"breakdown\": {\"keyword_relevance\": 85.0, \"structure\": 75.0, \"required_sections\": 100.0, \"skills_clarity\": 90.0, \"experience_quality\": 80.0, \"formatting\": 60.0}, \"missing_sections\": [], \"detected_sections\": [\"Contact Information\", \"Professional Summary\", \"Skills\", \"Education\", \"Work Exp"
+    },
+    {
+      "api": "ATS invalid resume",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "ATS missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Resume + JD",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 score=62 matched=['Python', 'FastAPI', 'PostgreSQL', 'Docker', 'AWS', 'Git'] missing=['Django', 'REST APIs', 'System Design']"
+    },
+    {
+      "api": "JD empty",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "JD extremely short",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "JD invalid resume",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "JD missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Skill Gap",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "200 strong=['Python', 'FastAPI', 'SQL'] missing=['REST APIs', 'System Design', 'Caching', 'Message Queues'] prio=[{'skill': 'REST APIs', 'category': 'Missing', 'priority': 'High', 'reason': 'Required for Backend Developer positions, but not found on the candidate profile.'}, {'skill': 'System Design', 'category': 'Missing', 'priority': 'High', 'reason': 'Required for Backend Developer positions, but not found on the candidate profile.'}, {'skill': 'Caching', 'category': 'Missing', 'priority': 'High', 'reason': 'Required for Backend Developer positions, but not found on the candidate profile.'}, {'skill': 'Message Queues', 'category': 'Missing', 'priority': 'High', 'reason': 'Required for Backend Developer positions, but not found on the candidate profile.'}, {'skill': 'PostgreSQL', 'category': 'Intermediate', 'priority': 'Medium', 'reason': 'Demonstrated familiarity in resume, but can be deepened with more complex projects.'}, {'skill': 'Docker', 'category': 'Intermediate', 'priority': 'Medium', 'reason': 'Demonstrated familiarity in resume, but can be deepened with more complex projects.'}, {'skill': 'AWS', 'category': 'Intermediate', 'priority': 'Medium', 'reason': 'Demonstrated familiarity in resume, but can be deepened with more complex projects.'}, {'skill': 'Git', 'category': 'Intermediate', 'priority': 'Medium', 'reason': 'Demonstrated familiarity in resume, but can be deepened with more complex projects.'}, {'skill': 'Python', 'category': 'Strong', 'priority': 'Low', 'reason': 'Strong practical experience demonstrated in projects or work history.'}, {'skill': 'FastAPI', 'category': 'Strong', 'priority': 'Low', 'reason': 'Strong practical experience demonstrated in projects or work history.'}, {'skill': 'SQL', 'category': 'Strong', 'priority': 'Low', 'reason': 'Strong practical experience demonstrated in projects or work history.'}]"
+    },
+    {
+      "api": "Skill gap strong/missing disjoint",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "overlap=set()"
+    },
+    {
+      "api": "Skill gap unknown role",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "200 {\"target_role\":\"Quantum Blockchain Unicorn Wrangler\",\"strong\":[\"Python\",\"FastAPI\",\"SQL\"],\"intermediate\":[\"PostgreSQL\",\"Docker\",\"AWS\",\"Git\"],\"weak\":[],\"missing\":[\"REST APIs\",\"System Design\",\"Caching\"],"
+    },
+    {
+      "api": "Skill gap empty role",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Skill gap invalid resume",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "Skill gap missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Career Readiness",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "200 score=72 breakdown={'skill_match': 54.55, 'resume_quality': 83.0, 'project_experience': 80.0, 'interview_readiness': 80.0, 'experience_relevance': 80.0}"
+    },
+    {
+      "api": "Readiness scores not identical across profiles",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "backend=72 weak=43"
+    },
+    {
+      "api": "Readiness invalid resume",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "Readiness missing target role",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Readiness missing auth",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Roadmap",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 level=Fresher phases=3 wasted_basics=False titles=['Containerization & Cloud Infrastructure', 'Backend Architecture & Distributed Systems', 'Production Engineering & CI/CD Automation']"
+    },
+    {
+      "api": "Roadmap invalid resume",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "Roadmap missing target role",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Roadmap missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Interview Questions",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 count=15 cats=['Behavioral', 'HR', 'Project Based', 'Resume Based', 'Role Specific', 'Skill Gap Based', 'Technical'] related=True sample=[{'question': 'How does concurrency and async/await work under the hood in Python?', 'category': 'Technical', 'difficulty': 'Medium', 'topic': 'Python'}, {'question': 'Explain how dependency injection and database session management are handled in FastAPI.', 'category': 'Technical', 'difficulty': 'Medium', 'topic': 'FastAPI'}]"
+    },
+    {
+      "api": "Interview count=5",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "201 {\"questions\":[{\"question\":\"How does concurrency and async/await work under the hood in Python?\",\"category\":\"Technical\",\""
+    },
+    {
+      "api": "Interview invalid count=2",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Interview very large count",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "Interview invalid resume",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "api": "Interview missing auth",
+      "method": "POST",
+      "status": "PASS",
+      "detail": "401"
+    },
+    {
+      "api": "Invalid path param type",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "api": "422 leak check",
+      "method": "GET",
+      "status": "PASS",
+      "detail": "no secrets"
+    },
+    {
+      "api": "SQLite tables present",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "['alembic_version', 'interview_questions', 'job_analyses', 'resume_analyses', 'resumes', 'roadmaps', 'users']"
+    },
+    {
+      "api": "Alembic version table",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "[('alembic_version',)]"
+    },
+    {
+      "api": "Alembic revision",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "[('002_phase2_features',)]"
+    },
+    {
+      "api": "Resume row user_id",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "(3, 3, 'uploads\\\\resumes\\\\65161c34a795487c9d3eaab52ca88881.pdf', 1)"
+    },
+    {
+      "api": "Cloudinary URL stored",
+      "method": "DB",
+      "status": "FAIL",
+      "detail": "file_path=uploads\\resumes\\65161c34a795487c9d3eaab52ca88881.pdf"
+    },
+    {
+      "api": "job_analyses row",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "(3, 3, '2026-09-20 11:37:27', '2026-09-20 11:37:27')"
+    },
+    {
+      "api": "roadmaps row",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "(3, 3, '2026-09-20 11:37:28', '2026-09-20 11:37:28')"
+    },
+    {
+      "api": "interview_questions rows",
+      "method": "DB",
+      "status": "PASS",
+      "detail": "(20, 3, 3)"
+    }
+  ],
+  "passed": 71,
+  "failed": 1
+}
