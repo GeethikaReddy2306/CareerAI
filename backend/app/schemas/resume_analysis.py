@@ -68,7 +68,7 @@ class ATSScoreResponse(BaseModel):
     categories: list[ATSCategory] = []
     ai_review: dict[str, Any] | None = Field(
         default=None,
-        description="Optional Anthropic-powered review; never blocks the deterministic score",
+        description="Optional OpenAI-powered deep review; never blocks the deterministic score",
     )
 
 

@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # Anthropic API (optional ATS AI review)
-    ANTHROPIC_API_KEY: str = ""
 
     # Upload configuration
     UPLOAD_DIR: str = "uploads"

@@ -1,12 +1,13 @@
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.resume import Resume
 from app.models.resume_analysis import ResumeAnalysis
 from app.models.user import User
-from app.services.llm_resume_review import get_llm_review
 from app.schemas.common import APIResponse
 from app.schemas.resume_analysis import (
     ATSScoreResponse,
@@ -109,7 +110,10 @@ def analyze_resume(
     response_model=ATSScoreResponse,
     tags=["ATS"],
     summary="Generate ATS compatibility score and feedback",
-    description="Evaluates resume text with deterministic multi-component ATS scoring (0-100).",
+    description=(
+        "Evaluates resume text with AI-powered ATS scoring, itemized per-line feedback, "
+        "and an optional OpenAI-powered deep review — all returned in a single response (0-100)."
+    ),
 )
 def compute_ats_score(
     resume_id: int,
@@ -124,12 +128,14 @@ def compute_ats_score(
             detail="The resume contains no readable extracted text to score.",
         )
 
-    # Deterministic score first; AI review is optional and must never block it.
+    # Deterministic/AI score first — this must always return.
     ats_result = ats_service.calculate_ats_score(resume.extracted_text)
+
+    # Optional Anthropic deep-review; never raises, never blocks the score above.
     ai_review = get_llm_review(resume.extracted_text)
     ats_result = ats_result.model_copy(update={"ai_review": ai_review})
 
-    # Persist ATS results into resume_analyses
+    # Persist ATS results into resume_analyses.
     existing_analysis = resume.analysis
     if existing_analysis:
         existing_analysis.ats_score = ats_result.score
@@ -154,47 +160,6 @@ def compute_ats_score(
     summary="Get saved analysis and ATS report for a resume",
     description="Retrieves the saved AI analysis profile and ATS scoring for the specified resume.",
 )
-@router.post(
-    "/{resume_id}/ats-score",
-    response_model=ATSScoreResponse,
-    tags=["ATS"],
-    summary="Generate ATS compatibility score and feedback",
-    description="Evaluates resume text with AI-powered ATS scoring, itemized feedback, and review (0-100).",
-)
-def compute_ats_score(
-    resume_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    resume = _get_user_resume(resume_id, current_user.id, db)
-
-    if not resume.extracted_text or not resume.extracted_text.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The resume contains no readable extracted text to score.",
-        )
-
-    # Single AI call now returns the score, breakdown, categories, AND the
-    # deeper ai_review fields together — no second call needed.
-    ats_result = ats_service.calculate_ats_score(resume.extracted_text)
-
-    # Persist ATS results into resume_analyses
-    existing_analysis = resume.analysis
-    if existing_analysis:
-        existing_analysis.ats_score = ats_result.score
-        existing_analysis.ats_feedback = ats_result.model_dump()
-    else:
-        existing_analysis = ResumeAnalysis(
-            resume_id=resume.id,
-            ats_score=ats_result.score,
-            ats_feedback=ats_result.model_dump(),
-        )
-        db.add(existing_analysis)
-
-    db.commit()
-    db.refresh(existing_analysis)
-
-    return ats_result
 def get_resume_analysis(
     resume_id: int,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -209,4 +174,3 @@ def get_resume_analysis(
         )
 
     return ResumeAnalysisDetailResponse.model_validate(resume.analysis)
-
