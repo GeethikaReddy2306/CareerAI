@@ -32,7 +32,7 @@ export function apiErrorMessage(error, fallback = 'Something went wrong. Please 
     return data.detail.map((item) => item.msg || JSON.stringify(item)).join(' ')
   }
   if (error?.code === 'ERR_NETWORK') {
-    return 'Cannot reach the API. Start the backend on port 8000 and refresh.'
+    return 'Cannot reach the API server. Please check your connection or try again.'
   }
   return fallback
 }

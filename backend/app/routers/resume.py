@@ -1,20 +1,37 @@
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 import uuid
+
+from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from pymongo.database import Database
+
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.db_helpers import serialize_doc, to_object_id, utcnow
 from app.dependencies.auth import get_current_user
-from app.models.resume import Resume
-from app.models.user import User
 from app.schemas.common import APIResponse
 from app.schemas.resume import ResumeDetailResponse, ResumeResponse, ResumeUploadResponse
 from app.services.resume_parser import extract_text_from_pdf
 
 router = APIRouter(prefix="/resumes", tags=["Resumes"])
+
+_COL = "resumes"
+_ANALYSIS_COL = "resume_analyses"
+
+
+def _get_user_resume_doc(resume_id: str, user_id: str, db: Database) -> dict[str, Any]:
+    """Fetch a resume document and verify ownership. Raises 404 if not found/not owned."""
+    try:
+        oid = to_object_id(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
+
+    doc = db[_COL].find_one({"_id": oid})
+    if not doc or str(doc["user_id"]) != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
+    return doc
 
 
 @router.post(
@@ -26,8 +43,8 @@ router = APIRouter(prefix="/resumes", tags=["Resumes"])
 )
 async def upload_resume(
     file: Annotated[UploadFile, File(description="PDF resume document")],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
 ):
     # Validate file extension
     original_filename = file.filename or "resume.pdf"
@@ -50,10 +67,7 @@ async def upload_resume(
     file_size = len(contents)
 
     if file_size == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded file is empty.",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty.")
 
     if file_size > settings.MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
@@ -61,12 +75,11 @@ async def upload_resume(
             detail=f"File size exceeds the limit of {settings.MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB.",
         )
 
-    # Generate safe unique filename
+    # Generate safe unique filename and save to disk
     unique_filename = f"{uuid.uuid4().hex}.pdf"
     upload_dir = settings.resumes_upload_path
     saved_file_path = upload_dir / unique_filename
 
-    # Save to disk
     with open(saved_file_path, "wb") as buffer:
         buffer.write(contents)
 
@@ -74,7 +87,6 @@ async def upload_resume(
     try:
         extracted_text = extract_text_from_pdf(saved_file_path)
     except Exception:
-        # Clean up saved file if extraction fails (ignore Windows lock races)
         if saved_file_path.exists():
             try:
                 os.remove(saved_file_path)
@@ -85,22 +97,23 @@ async def upload_resume(
             detail="Failed to extract text from PDF. The file may be corrupted or unreadable.",
         )
 
-    # Create Resume record in DB
-    resume = Resume(
-        user_id=current_user.id,
-        original_filename=original_filename,
-        file_path=str(saved_file_path),
-        file_type="application/pdf",
-        file_size=file_size,
-        extracted_text=extracted_text,
-    )
-    db.add(resume)
-    db.commit()
-    db.refresh(resume)
+    now = utcnow()
+    user_oid = to_object_id(current_user["id"])
+    doc = {
+        "user_id": user_oid,
+        "original_filename": original_filename,
+        "file_path": str(saved_file_path),
+        "file_type": "application/pdf",
+        "file_size": file_size,
+        "extracted_text": extracted_text,
+        "uploaded_at": now,
+        "updated_at": now,
+    }
+    result = db[_COL].insert_one(doc)
 
     return ResumeUploadResponse(
-        id=resume.id,
-        filename=resume.original_filename,
+        id=str(result.inserted_id),
+        filename=original_filename,
         message="Resume uploaded and parsed successfully",
         text_length=len(extracted_text) if extracted_text else 0,
     )
@@ -113,12 +126,23 @@ async def upload_resume(
     description="Returns metadata for all resumes uploaded by the authenticated user.",
 )
 def list_resumes(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
 ):
-    stmt = select(Resume).where(Resume.user_id == current_user.id).order_by(Resume.uploaded_at.desc())
-    resumes = db.scalars(stmt).all()
-    return resumes
+    user_oid = to_object_id(current_user["id"])
+    docs = list(db[_COL].find({"user_id": user_oid}).sort("uploaded_at", -1))
+    result = []
+    for doc in docs:
+        result.append(ResumeResponse(
+            id=str(doc["_id"]),
+            user_id=str(doc["user_id"]),
+            original_filename=doc["original_filename"],
+            file_type=doc["file_type"],
+            file_size=doc["file_size"],
+            uploaded_at=doc["uploaded_at"],
+            updated_at=doc["updated_at"],
+        ))
+    return result
 
 
 @router.get(
@@ -128,27 +152,23 @@ def list_resumes(
     description="Fetches full details including extracted text for a resume owned by the current user.",
 )
 def get_resume(
-    resume_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    resume_id: str,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
 ):
-    resume = db.get(Resume, resume_id)
-    if not resume or resume.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume not found",
-        )
-
+    doc = _get_user_resume_doc(resume_id, current_user["id"], db)
+    # Check if analysis exists
+    analysis_exists = db[_ANALYSIS_COL].find_one({"resume_id": doc["_id"]}) is not None
     return ResumeDetailResponse(
-        id=resume.id,
-        user_id=resume.user_id,
-        original_filename=resume.original_filename,
-        file_type=resume.file_type,
-        file_size=resume.file_size,
-        uploaded_at=resume.uploaded_at,
-        updated_at=resume.updated_at,
-        extracted_text=resume.extracted_text,
-        has_analysis=resume.analysis is not None,
+        id=str(doc["_id"]),
+        user_id=str(doc["user_id"]),
+        original_filename=doc["original_filename"],
+        file_type=doc["file_type"],
+        file_size=doc["file_size"],
+        uploaded_at=doc["uploaded_at"],
+        updated_at=doc["updated_at"],
+        extracted_text=doc.get("extracted_text"),
+        has_analysis=analysis_exists,
     )
 
 
@@ -159,26 +179,25 @@ def get_resume(
     description="Deletes a resume, its file on disk, and associated analyses.",
 )
 def delete_resume(
-    resume_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    resume_id: str,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
 ):
-    resume = db.get(Resume, resume_id)
-    if not resume or resume.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Resume not found",
-        )
+    doc = _get_user_resume_doc(resume_id, current_user["id"], db)
+    oid = doc["_id"]
 
     # Delete physical file
-    if resume.file_path and os.path.exists(resume.file_path):
+    file_path = doc.get("file_path")
+    if file_path and os.path.exists(file_path):
         try:
-            os.remove(resume.file_path)
+            os.remove(file_path)
         except OSError:
             pass
 
-    db.delete(resume)
-    db.commit()
+    # Delete related analysis documents
+    db[_ANALYSIS_COL].delete_one({"resume_id": oid})
+    # Delete the resume itself
+    db[_COL].delete_one({"_id": oid})
 
     return APIResponse(
         success=True,

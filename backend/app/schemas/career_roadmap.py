@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class RoadmapCreateRequest(BaseModel):
-    resume_id: int = Field(..., description="ID of the candidate resume")
+    resume_id: str | int = Field(..., description="ID of the candidate resume")
     target_role: str = Field(..., min_length=2, max_length=255, description="Target career role")
 
 
@@ -18,11 +18,10 @@ class RoadmapPhase(BaseModel):
 
 
 class RoadmapResponse(BaseModel):
-    id: int | None = None
-    resume_id: int
+    id: str | None = None
+    resume_id: str
     target_role: str
     current_level: str
     roadmap: list[RoadmapPhase] = Field(default_factory=list, description="Chronological career milestones")
 
-    model_config = ConfigDict(from_attributes=True)
-
+    model_config = ConfigDict(from_attributes=False)

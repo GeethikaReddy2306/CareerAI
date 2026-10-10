@@ -176,6 +176,9 @@ def _kw_in_text(word: str, text: str) -> bool:
     return bool(re.search(pattern, text, re.IGNORECASE))
 
 
+_keyword_present = _kw_in_text
+
+
 def _detect_sections(text: str) -> tuple[list[str], list[str]]:
     detected: list[str] = []
     for section, patterns in SECTION_PATTERNS.items():

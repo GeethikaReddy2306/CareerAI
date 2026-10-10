@@ -1,6 +1,5 @@
 import re
 from typing import Any
-from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.skill_gap import PrioritizedSkillItem, SkillGapResponse
 from app.services.ai_service import call_structured_ai
 from pydantic import BaseModel, Field
@@ -167,7 +166,7 @@ def get_target_skills_for_role(target_role: str, user_target_skills: list[str] |
 
 
 def analyze_skill_gaps(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     target_role: str,
     target_skills: list[str] | None = None,
 ) -> SkillGapResponse:
@@ -175,7 +174,7 @@ def analyze_skill_gaps(
 
     Strong, Intermediate, Weak, and Missing, with action prioritization.
     """
-    candidate_raw_skills = resume_analysis.skills or []
+    candidate_raw_skills = resume_analysis.get("skills") or []
     candidate_norm_map: dict[str, str] = {}
     for s in candidate_raw_skills:
         norm = normalize_skill(s)
@@ -188,14 +187,14 @@ def analyze_skill_gaps(
 
     # Also inspect projects and experience text for evidence of skill depth
     proj_parts = []
-    for p in (resume_analysis.projects or []):
+    for p in (resume_analysis.get("projects") or []):
         techs = _safe_val(p, "technologies", [])
         tech_str = " ".join(techs) if isinstance(techs, list) else str(techs)
         proj_parts.append(f"{_safe_val(p, 'name', '')} {_safe_val(p, 'description', '')} {tech_str}")
     project_text = " ".join(proj_parts).lower()
 
     exp_parts = []
-    for w in (resume_analysis.work_experience or []):
+    for w in (resume_analysis.get("work_experience") or []):
         resps = _safe_val(w, "responsibilities", [])
         resp_str = " ".join(resps) if isinstance(resps, list) else str(resps)
         exp_parts.append(f"{_safe_val(w, 'company', '')} {_safe_val(w, 'role', '')} {resp_str}")

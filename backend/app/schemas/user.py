@@ -8,15 +8,14 @@ class UserBase(BaseModel):
 
 
 class UserResponse(UserBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=False)
 
 
 class UserMeResponse(UserBase):
-    id: int
+    id: str
 
-    model_config = ConfigDict(from_attributes=True)
-
+    model_config = ConfigDict(from_attributes=False)

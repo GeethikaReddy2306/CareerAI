@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class SkillGapRequest(BaseModel):
-    resume_id: int = Field(..., description="ID of the resume to analyze")
+    resume_id: str | int = Field(..., description="ID of the resume to analyze")
     target_role: str = Field(..., min_length=2, max_length=255, description="Target career role (e.g. Backend Developer)")
     target_skills: list[str] | None = Field(
         default=None,
@@ -26,4 +26,3 @@ class SkillGapResponse(BaseModel):
     prioritized_skills: list[PrioritizedSkillItem] = Field(
         default_factory=list, description="Prioritized list of skills with action rationale"
     )
-

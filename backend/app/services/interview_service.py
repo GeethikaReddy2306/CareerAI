@@ -1,6 +1,5 @@
 from typing import Any
 from pydantic import BaseModel, Field
-from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.interview import InterviewQuestionItem
 from app.schemas.skill_gap import SkillGapResponse
 from app.services.ai_service import call_structured_ai
@@ -21,17 +20,17 @@ class AIInterviewQuestionsSchema(BaseModel):
 
 
 def _heuristic_interview_questions(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     target_role: str,
     skill_gap: SkillGapResponse,
     question_count: int,
 ) -> AIInterviewQuestionsSchema:
     """Deterministic fallback question generator covering all 7 categories personalized to the candidate."""
-    primary_skills = resume_analysis.skills or ["Python", "FastAPI", "SQL"]
+    primary_skills = resume_analysis.get("skills") or ["Python", "FastAPI", "SQL"]
     primary_skill = primary_skills[0] if primary_skills else "Python"
     secondary_skill = primary_skills[1] if len(primary_skills) > 1 else "FastAPI"
 
-    projects = resume_analysis.projects or []
+    projects = resume_analysis.get("projects") or []
     project_name = projects[0].get("name", "your core project") if projects else "your recent backend project"
 
     missing_skill = skill_gap.missing[0] if skill_gap.missing else "Docker"
@@ -148,7 +147,7 @@ def _heuristic_interview_questions(
 
 
 def generate_interview_questions(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     target_role: str,
     skill_gap: SkillGapResponse,
     job_description: str | None = None,
@@ -160,9 +159,9 @@ def generate_interview_questions(
             resume_analysis, target_role, skill_gap, question_count
         )
 
-    skills_text = ", ".join(resume_analysis.skills or [])
+    skills_text = ", ".join(resume_analysis.get("skills") or [])
     projects_text = "; ".join(
-        [f"{p.get('name', '')} ({', '.join(p.get('technologies', []))}): {p.get('description', '')}" for p in (resume_analysis.projects or [])]
+        [f"{p.get('name', '')} ({', '.join(p.get('technologies', []))}): {p.get('description', '')}" for p in (resume_analysis.get("projects") or [])]
     )
     jd_context = f"\nTarget Job Description:\n{job_description}" if job_description else ""
 

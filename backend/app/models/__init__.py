@@ -1,17 +1,22 @@
-from app.core.database import Base
-from app.models.user import User
-from app.models.resume import Resume
-from app.models.resume_analysis import ResumeAnalysis
-from app.models.job_analysis import JobAnalysis
-from app.models.career_roadmap import CareerRoadmap
-from app.models.interview_question import InterviewQuestion
+"""
+MongoDB collection stubs.
 
-__all__ = [
-    "Base",
-    "User",
-    "Resume",
-    "ResumeAnalysis",
-    "JobAnalysis",
-    "CareerRoadmap",
-    "InterviewQuestion",
-]
+SQLAlchemy ORM models have been removed.
+Collections are accessed directly via `get_db()["collection_name"]`.
+This file is kept as a namespace/documentation reference only.
+
+Collections in use:
+  users               — user accounts
+  resumes             — uploaded resume metadata + extracted text
+  resume_analyses     — AI analysis + ATS scoring results
+  job_analyses        — job description match results
+  roadmaps            — career roadmaps
+  interview_questions — generated interview questions
+"""
+
+USERS_COLLECTION = "users"
+RESUMES_COLLECTION = "resumes"
+RESUME_ANALYSES_COLLECTION = "resume_analyses"
+JOB_ANALYSES_COLLECTION = "job_analyses"
+ROADMAPS_COLLECTION = "roadmaps"
+INTERVIEW_QUESTIONS_COLLECTION = "interview_questions"

@@ -1,10 +1,10 @@
-from app.models.resume_analysis import ResumeAnalysis
+from typing import Any
 from app.schemas.career_readiness import CareerReadinessBreakdown, CareerReadinessResponse
 from app.schemas.skill_gap import SkillGapResponse
 
 
 def calculate_career_readiness(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     target_role: str,
     skill_gap: SkillGapResponse,
 ) -> CareerReadinessResponse:
@@ -22,14 +22,14 @@ def calculate_career_readiness(
     score_skill_match = round(min((weighted_skill_sum / total_req_skills) * 100, 100.0), 2)
 
     # 2. Resume Quality (20% weight)
-    if resume_analysis.ats_score is not None:
-        score_resume_quality = float(resume_analysis.ats_score)
+    if resume_analysis.get("ats_score") is not None:
+        score_resume_quality = float(resume_analysis["ats_score"])
     else:
         # Fallback baseline based on section completeness
         score_resume_quality = 75.0
 
     # 3. Project Experience (15% weight)
-    projects = resume_analysis.projects or []
+    projects = resume_analysis.get("projects") or []
     num_projects = len(projects)
     score_project = 55.0
     if num_projects >= 3:
@@ -41,7 +41,7 @@ def calculate_career_readiness(
 
     # Check if project technologies overlap with strong or target skills
     proj_techs = {
-        tech.lower() for p in projects for tech in p.get("technologies", [])
+        tech.lower() for p in projects for tech in (p.get("technologies") if isinstance(p, dict) else getattr(p, "technologies", []))
     }
     strong_lower = {s.lower() for s in skill_gap.strong}
     if proj_techs.intersection(strong_lower):
@@ -49,14 +49,13 @@ def calculate_career_readiness(
     score_project = round(min(score_project, 100.0), 2)
 
     # 4. Interview Readiness (15% weight)
-    # Strong foundational skills + presence of certifications or concrete achievements
     score_interview = 60.0
     if len(skill_gap.strong) >= 3:
         score_interview += 20.0
     elif len(skill_gap.strong) >= 1:
         score_interview += 10.0
 
-    certs = resume_analysis.certifications or []
+    certs = resume_analysis.get("certifications") or []
     if certs:
         score_interview += 10.0
 
@@ -67,7 +66,7 @@ def calculate_career_readiness(
     score_interview = round(max(0.0, min(score_interview, 100.0)), 2)
 
     # 5. Experience Relevance (15% weight)
-    exp_level = (resume_analysis.experience_level or "Fresher").lower()
+    exp_level = (resume_analysis.get("experience_level") or "Fresher").lower()
     target_lower = target_role.lower()
 
     if "senior" in target_lower or "lead" in target_lower:
@@ -75,7 +74,6 @@ def calculate_career_readiness(
     elif "mid" in target_lower:
         score_exp = 85.0 if ("mid" in exp_level or "senior" in exp_level) else 65.0
     else:
-        # Junior / general roles
         if "senior" in exp_level:
             score_exp = 95.0
         elif "mid" in exp_level:
@@ -85,7 +83,7 @@ def calculate_career_readiness(
         else:
             score_exp = 70.0
 
-    work_exps = resume_analysis.work_experience or []
+    work_exps = resume_analysis.get("work_experience") or []
     if work_exps:
         score_exp = min(score_exp + 10.0, 100.0)
     score_exp = round(score_exp, 2)

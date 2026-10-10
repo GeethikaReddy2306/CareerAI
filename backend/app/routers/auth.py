@@ -1,9 +1,10 @@
-from typing import Annotated
+from typing import Annotated, Any
+
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
+from pymongo.database import Database
+
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models.user import User
 from app.schemas.auth import UserRegisterRequest, UserLoginRequest, TokenResponse
 from app.schemas.common import APIResponse
 from app.schemas.user import UserResponse, UserMeResponse
@@ -21,13 +22,13 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 )
 def register(
     request: UserRegisterRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[Database, Depends(get_db)],
 ):
     user = auth_service.register_user(db, request)
     return APIResponse(
         success=True,
         message="User registered successfully",
-        data=UserResponse.model_validate(user),
+        data=UserResponse(**user),
     )
 
 
@@ -39,7 +40,7 @@ def register(
 )
 def login(
     request: UserLoginRequest,
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[Database, Depends(get_db)],
 ):
     return auth_service.authenticate_user(db, request)
 
@@ -51,7 +52,6 @@ def login(
     description="Returns profile information for the currently authenticated user.",
 )
 def get_me(
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
 ):
-    return UserMeResponse.model_validate(current_user)
-
+    return UserMeResponse(**current_user)

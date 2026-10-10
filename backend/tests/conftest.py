@@ -2,62 +2,37 @@ import io
 from pathlib import Path
 import tempfile
 from typing import Generator
+import mongomock
 import pymupdf
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
-from app.core.database import Base, get_db
+from app.core.database import get_db, set_test_db
 from app.main import app
 
-# In-memory SQLite engine for tests
-TEST_DATABASE_URL = "sqlite:///:memory:"
-test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
-
-@pytest.fixture(autouse=True)
-def setup_test_db() -> Generator[None, None, None]:
-    """Create all tables before each test and drop them after."""
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    Base.metadata.drop_all(bind=test_engine)
+@pytest.fixture
+def test_db():
+    """Create an isolated in-memory MongoDB database for testing."""
+    client = mongomock.MongoClient()
+    db = client[settings.MONGODB_DATABASE]
+    # Ensure indexes in mock DB
+    db["users"].create_index("email", unique=True)
+    db["resumes"].create_index("user_id")
+    db["resume_analyses"].create_index("resume_id", unique=True)
+    return db
 
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
-    """Provide a transactional database session for tests."""
-    connection = test_engine.connect()
-    transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
-
-    yield session
-
-    session.close()
-    transaction.rollback()
-    connection.close()
-
-
-@pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """Test client with overridden get_db dependency."""
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
+def client(test_db) -> Generator[TestClient, None, None]:
+    """Test client with overridden get_db dependency using mongomock."""
+    set_test_db(test_db)
+    app.dependency_overrides[get_db] = lambda: test_db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    set_test_db(None)
 
 
 @pytest.fixture
@@ -140,4 +115,3 @@ def other_user_auth_headers(client: TestClient) -> dict[str, str]:
     assert login_resp.status_code == 200
     token = login_resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
-

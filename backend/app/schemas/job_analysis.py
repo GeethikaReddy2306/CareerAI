@@ -2,15 +2,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobAnalysisRequest(BaseModel):
-    resume_id: int = Field(..., description="ID of the candidate resume to compare")
+    resume_id: str | int = Field(..., description="ID of the candidate resume to compare")
     job_description: str = Field(
         ..., min_length=10, description="Job description text detailing requirements and responsibilities"
     )
 
 
 class JobAnalysisResponse(BaseModel):
-    id: int
-    resume_id: int
+    id: str
+    resume_id: str
     match_score: int = Field(..., ge=0, le=100, description="Overall match compatibility score (0-100)")
     matched_skills: list[str] = Field(default_factory=list, description="Skills present in both resume and JD")
     partial_skills: list[str] = Field(
@@ -30,5 +30,4 @@ class JobAnalysisResponse(BaseModel):
         default_factory=list, description="Targeted recommendations to improve alignment with this specific role"
     )
 
-    model_config = ConfigDict(from_attributes=True)
-
+    model_config = ConfigDict(from_attributes=False)

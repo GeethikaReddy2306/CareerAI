@@ -6,6 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.database import (
+    check_database_connectivity,
+    close_mongo_connection,
+    connect_to_mongo,
+    get_db,
+)
 from app.routers import (
     auth_router,
     resume_router,
@@ -28,12 +34,25 @@ logger = logging.getLogger("career_platform")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure upload directories exist
+    # ── Startup ────────────────────────────────────────────────────────────────
+    # Ensure upload directories exist
     settings.resumes_upload_path.mkdir(parents=True, exist_ok=True)
     logger.info("Application startup: verified storage directories.")
+
+    # Connect to MongoDB Atlas
+    try:
+        connect_to_mongo()
+    except Exception as exc:
+        logger.warning(
+            "MongoDB Atlas connection not established on startup: %s. Application is running. Set your Atlas URI in backend/.env to enable database operations.",
+            exc,
+        )
+
     yield
-    # Shutdown
-    logger.info("Application shutdown.")
+
+    # ── Shutdown ───────────────────────────────────────────────────────────────
+    close_mongo_connection()
+    logger.info("Application shutdown complete.")
 
 
 app = FastAPI(
@@ -66,19 +85,15 @@ app = FastAPI(
     ],
 )
 
-# CORS configuration — explicit origins so browsers accept Authorization headers
+# CORS — origins come from ALLOWED_ORIGINS env var (comma-separated).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Consistent error handlers
 @app.exception_handler(HTTPException)
@@ -97,7 +112,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "success": False,
             "message": "Validation error",
@@ -126,6 +141,17 @@ def root():
         "message": "AI-Powered Career Intelligence Platform API is active",
         "version": settings.VERSION,
         "docs_url": "/docs",
+    }
+
+
+@app.get("/health", tags=["Health"], summary="Health check")
+def health_check():
+    """Liveness probe — also verifies MongoDB is reachable."""
+    is_connected = check_database_connectivity()
+    return {
+        "status": "ok",
+        "version": settings.VERSION,
+        "database": "connected" if is_connected else "disconnected",
     }
 
 

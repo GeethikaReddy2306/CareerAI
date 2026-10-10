@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class InterviewQuestionsRequest(BaseModel):
-    resume_id: int = Field(..., description="Candidate resume ID")
+    resume_id: str | int = Field(..., description="Candidate resume ID")
     target_role: str = Field(..., min_length=2, max_length=255, description="Target job title or role")
     job_description: str | None = Field(default=None, description="Optional job description text for deeper tailoring")
     question_count: int = Field(default=15, ge=5, le=50, description="Total number of questions to generate (5-50)")

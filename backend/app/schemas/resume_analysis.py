@@ -73,8 +73,8 @@ class ATSScoreResponse(BaseModel):
 
 
 class ResumeAnalysisDetailResponse(BaseModel):
-    id: int
-    resume_id: int
+    id: str
+    resume_id: str
     summary: str | None = None
     skills: list[str] | None = None
     education: list[EducationItem] | None = None
@@ -90,4 +90,4 @@ class ResumeAnalysisDetailResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=False)

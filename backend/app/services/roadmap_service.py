@@ -1,6 +1,5 @@
 from typing import Any
 from pydantic import BaseModel, Field
-from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.career_roadmap import RoadmapPhase, RoadmapResponse
 from app.schemas.skill_gap import SkillGapResponse
 from app.services.ai_service import call_structured_ai
@@ -76,14 +75,14 @@ def _heuristic_roadmap(
 
 
 def generate_career_roadmap(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     target_role: str,
     skill_gap: SkillGapResponse,
 ) -> list[RoadmapPhase]:
     """Generate a personalized, gap-focused career roadmap avoiding basics the candidate already knows."""
     known_skills = list(dict.fromkeys(skill_gap.strong + skill_gap.intermediate))
     gap_skills = list(dict.fromkeys(skill_gap.missing + skill_gap.weak))
-    current_level = resume_analysis.experience_level or "Junior"
+    current_level = resume_analysis.get("experience_level") or "Junior"
 
     def fallback():
         return _heuristic_roadmap(target_role, current_level, known_skills, gap_skills)

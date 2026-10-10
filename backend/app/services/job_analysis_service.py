@@ -1,7 +1,6 @@
 import re
 from typing import Any
 from pydantic import BaseModel, Field
-from app.models.resume_analysis import ResumeAnalysis
 from app.services.ai_service import call_structured_ai
 from app.services.skill_gap_service import (
     SKILL_NORMALIZATION_MAP,
@@ -61,7 +60,7 @@ def _heuristic_extract_jd(job_description: str) -> AIJobExtractionSchema:
 
 
 def analyze_job_description(
-    resume_analysis: ResumeAnalysis,
+    resume_analysis: dict[str, Any],
     job_description: str,
 ) -> dict[str, Any]:
     """Perform deterministic and semantic Resume vs Job Description comparison."""
@@ -87,12 +86,12 @@ def analyze_job_description(
     # Deduplicate while preserving order
     jd_skills = list(dict.fromkeys(jd_skills))
 
-    candidate_skills = [normalize_skill(s) for s in (resume_analysis.skills or [])]
+    candidate_skills = [normalize_skill(s) for s in (resume_analysis.get("skills") or [])]
     candidate_skills_lower = {s.lower(): s for s in candidate_skills}
 
     # Inspect candidate project and work experience context for evidence
     proj_lines = []
-    for p in (resume_analysis.projects or []):
+    for p in (resume_analysis.get("projects") or []):
         name = _safe_get(p, "name", "")
         desc = _safe_get(p, "description", "")
         techs = _safe_get(p, "technologies", [])
@@ -100,7 +99,7 @@ def analyze_job_description(
         proj_lines.append(f"{name} {desc} {tech_str}")
 
     exp_lines = []
-    for w in (resume_analysis.work_experience or []):
+    for w in (resume_analysis.get("work_experience") or []):
         company = _safe_get(w, "company", "")
         role = _safe_get(w, "role", "")
         resps = _safe_get(w, "responsibilities", [])
@@ -108,7 +107,7 @@ def analyze_job_description(
         exp_lines.append(f"{company} {role} {resp_str}")
 
     candidate_context = " ".join([
-        resume_analysis.summary or "",
+        resume_analysis.get("summary") or "",
         " ".join(proj_lines),
         " ".join(exp_lines),
     ]).lower()
@@ -150,7 +149,7 @@ def analyze_job_description(
 
     # Experience relevance score (25% weight)
     exp_score = 75.0
-    cand_level = (resume_analysis.experience_level or "Fresher").lower()
+    cand_level = (resume_analysis.get("experience_level") or "Fresher").lower()
     if "senior" in lower_jd or "lead" in lower_jd:
         exp_score = 90.0 if "senior" in cand_level or "mid" in cand_level else 55.0
     elif "mid" in lower_jd or "3+" in lower_jd:
