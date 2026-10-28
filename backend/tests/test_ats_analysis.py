@@ -35,6 +35,10 @@ def test_ats_service_score_range_and_breakdown():
     assert "Skills" in result.detected_sections
     assert "Education" in result.detected_sections
     assert isinstance(result.suggestions, list)
+    assert result.analysis_mode == "deterministic"
+    assert result.improvements
+    for improvement in result.improvements:
+        assert improvement.issue and improvement.why_it_matters and improvement.suggested_correction
     assert isinstance(result.categories, list)
     names = {c.name for c in result.categories}
     assert {"Quantifying Impact", "Repetition", "Spelling & Grammar", "Bullets Consistency"} <= names
@@ -84,9 +88,12 @@ def test_ats_score_endpoint(client: TestClient, auth_headers: dict[str, str], sa
     assert isinstance(data["detected_sections"], list)
     assert isinstance(data["missing_sections"], list)
     assert isinstance(data["suggestions"], list)
+    assert isinstance(data["improvements"], list)
+    assert data["improvements"]
     assert isinstance(data["categories"], list)
     assert "ai_review" in data
     assert "overall_feedback" in data["ai_review"]
+    assert data["ai_review"]["status"] in ("available", "unavailable")
 
 
 def test_ai_resume_analysis_and_caching(

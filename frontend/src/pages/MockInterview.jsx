@@ -17,6 +17,7 @@ function MockInner({ resumes, selectedId, select }) {
   const { user } = useAuth()
   const [role, setRole] = useState('Backend Developer')
   const [questions, setQuestions] = useState([])
+  const [sessionId, setSessionId] = useState(null)
   const [index, setIndex] = useState(0)
   const [answer, setAnswer] = useState('')
   const [evals, setEvals] = useState([])
@@ -36,6 +37,7 @@ function MockInner({ resumes, selectedId, select }) {
         question_count: 6,
       })
       setQuestions(data.questions || [])
+      setSessionId(data.session_id || null)
       setIndex(0)
       setEvals([])
       setCurrentEval(null)
@@ -64,6 +66,7 @@ function MockInner({ resumes, selectedId, select }) {
         category: q.category,
         topic: q.topic,
         target_role: role,
+        session_id: sessionId,
       })
       const next = [...evals, { ...data, question: q.question }]
       setEvals(next)
@@ -169,7 +172,7 @@ function MockInner({ resumes, selectedId, select }) {
               </div>
             ))}
           </div>
-          <Button className="mt-4" variant="ghost" onClick={() => { setStarted(false); setQuestions([]); setEvals([]) }}>
+          <Button className="mt-4" variant="ghost" onClick={() => { setStarted(false); setQuestions([]); setEvals([]); setSessionId(null) }}>
             New session
           </Button>
         </Card>

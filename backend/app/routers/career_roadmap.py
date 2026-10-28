@@ -7,7 +7,8 @@ from app.core.database import get_db
 from app.core.db_helpers import to_object_id, utcnow
 from app.dependencies.auth import get_current_user
 from app.routers.router_helpers import ensure_analysis, get_user_resume
-from app.schemas.career_roadmap import RoadmapCreateRequest, RoadmapPhase, RoadmapResponse
+from app.schemas.career_roadmap import RoadmapCreateRequest, RoadmapPhase, RoadmapProgressRequest, RoadmapResponse
+from app.services.skill_normalization import normalize_skills
 from app.services import roadmap_service, skill_gap_service
 
 router = APIRouter(prefix="/career/roadmap", tags=["Career Roadmap"])
@@ -37,10 +38,10 @@ def create_career_roadmap(
 
     analysis = ensure_analysis(resume, db)
 
-    skill_gap = skill_gap_service.analyze_skill_gaps(
-        resume_analysis=analysis,
-        target_role=request.target_role,
-    )
+    try:
+        skill_gap = skill_gap_service.analyze_skill_gaps(resume_analysis=analysis, target_role=request.target_role)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     phases = roadmap_service.generate_career_roadmap(
         resume_analysis=analysis,
@@ -58,6 +59,7 @@ def create_career_roadmap(
         "target_role": request.target_role,
         "current_level": current_level,
         "roadmap_data": phases_data,
+        "completed_skills": [],
         "created_at": now,
         "updated_at": now,
     }
@@ -69,6 +71,7 @@ def create_career_roadmap(
         target_role=request.target_role,
         current_level=current_level,
         roadmap=phases,
+        completed_skills=[],
     )
 
 
@@ -103,4 +106,26 @@ def get_career_roadmap(
         target_role=roadmap_doc["target_role"],
         current_level=roadmap_doc["current_level"],
         roadmap=phases,
+        completed_skills=roadmap_doc.get("completed_skills", []),
     )
+
+
+@router.patch("/{roadmap_id}/progress", response_model=RoadmapResponse, summary="Persist roadmap skill completion")
+def update_roadmap_progress(
+    roadmap_id: str,
+    request: RoadmapProgressRequest,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
+):
+    try:
+        roadmap_oid = to_object_id(roadmap_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Roadmap not found")
+    doc = db[_ROADMAPS].find_one({"_id": roadmap_oid, "user_id": to_object_id(current_user["id"])})
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Roadmap not found")
+    allowed = {skill.casefold() for phase in doc.get("roadmap_data", []) for skill in phase.get("skills", [])}
+    completed = [skill for skill in normalize_skills(request.completed_skills) if skill.casefold() in allowed]
+    db[_ROADMAPS].update_one({"_id": roadmap_oid}, {"$set": {"completed_skills": completed, "updated_at": utcnow()}})
+    phases = [RoadmapPhase.model_validate(phase) for phase in doc["roadmap_data"]]
+    return RoadmapResponse(id=str(doc["_id"]), resume_id=str(doc["resume_id"]), target_role=doc["target_role"], current_level=doc["current_level"], roadmap=phases, completed_skills=completed)

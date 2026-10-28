@@ -15,6 +15,13 @@ class RoadmapPhase(BaseModel):
     projects: list[str] = Field(default_factory=list, description="Hands-on portfolio projects to build")
     estimated_weeks: int = Field(..., ge=1, description="Estimated duration in weeks")
     priority: str = Field(..., description="Priority: High, Medium, or Low")
+    objectives: list[str] = Field(default_factory=list, description="Observable learning objectives")
+    completion_criteria: list[str] = Field(default_factory=list, description="Evidence required before considering the phase complete")
+    resource_search_terms: list[str] = Field(default_factory=list, description="Search terms, not invented external links")
+
+
+class RoadmapProgressRequest(BaseModel):
+    completed_skills: list[str] = Field(default_factory=list, max_length=100)
 
 
 class RoadmapResponse(BaseModel):
@@ -23,5 +30,6 @@ class RoadmapResponse(BaseModel):
     target_role: str
     current_level: str
     roadmap: list[RoadmapPhase] = Field(default_factory=list, description="Chronological career milestones")
+    completed_skills: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=False)

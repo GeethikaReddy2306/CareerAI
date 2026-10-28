@@ -64,17 +64,14 @@ function CategoryCard({ category }) {
 function AIReview({ review }) {
   if (!review) return null
 
-  const isUnavailable =
-    review.clarity_score == null &&
-    review.impact_score == null &&
-    !review.grammar_issues?.length &&
-    !review.weak_bullets?.length
+  const isUnavailable = review.status === 'unavailable'
 
   if (isUnavailable) {
     return (
       <Card className="p-5 lg:col-span-3">
         <h2 className="font-display text-xl">AI Review</h2>
         <p className="mt-3 text-sm text-white/50">{review.overall_feedback}</p>
+        <p className="mt-2 text-xs text-gold">This is not presented as a successful AI review. You can retry the analysis after checking the backend AI configuration.</p>
       </Card>
     )
   }
@@ -190,7 +187,7 @@ function AtsInner({ resumes, selectedId, select }) {
       <PageHeader
         eyebrow="ATS"
         title="ATS resume score"
-        description="AI-powered compatibility score for keywords, formatting, skills, structure, and itemized per-line feedback."
+        description="A deterministic compatibility estimate with documented weighted components. AI feedback is clearly labelled when available."
         actions={
           <Button disabled={busy || !selectedId} onClick={run}>
             {busy ? 'Scoring…' : 'Generate ATS score'}
@@ -207,6 +204,7 @@ function AtsInner({ resumes, selectedId, select }) {
           {/* Score + detected sections */}
           <Card className="p-5">
             <ScoreBadge score={result.score} />
+            <p className="mt-3 text-xs text-white/45">{result.calculation_note}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               {(result.detected_sections || []).map((s) => <Chip key={s} tone="mint">{s}</Chip>)}
             </div>
@@ -219,7 +217,7 @@ function AtsInner({ resumes, selectedId, select }) {
               {Object.entries(breakdown).map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-line px-3 py-2">
                   <p className="text-xs uppercase tracking-wide text-white/40">{k.replaceAll('_', ' ')}</p>
-                  <p className="font-display text-lg">{v}</p>
+                  <p className="font-display text-lg">{v}/100</p>
                 </div>
               ))}
             </div>
@@ -241,16 +239,23 @@ function AtsInner({ resumes, selectedId, select }) {
             <div className="mt-3 flex flex-wrap gap-2">
               {(result.missing_sections || []).length
                 ? result.missing_sections.map((s) => <Chip key={s} tone="rose">{s}</Chip>)
-                : <p className="text-sm text-white/50">None detected.</p>}
+                : <p className="text-sm text-white/50">No standard sections are missing based on the extracted text.</p>}
             </div>
           </Card>
 
           {/* Suggestions */}
           <Card className="p-5 lg:col-span-2">
             <h2 className="font-display text-xl">Improvements</h2>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/70">
-              {(result.suggestions || []).map((s) => <li key={s}>{s}</li>)}
-            </ul>
+            <div className="mt-3 space-y-3">
+              {(result.improvements || []).map((item) => (
+                <div key={item.issue} className="rounded-xl border border-line p-3 text-sm">
+                  <div className="flex items-center gap-2"><p className="font-medium">{item.issue}</p><Chip tone={item.priority === 'High' ? 'rose' : item.priority === 'Medium' ? 'gold' : 'neutral'}>{item.priority}</Chip></div>
+                  <p className="mt-1 text-white/55">Why it matters: {item.why_it_matters}</p>
+                  <p className="mt-1 text-mint">Next step: {item.suggested_correction}</p>
+                </div>
+              ))}
+              {!result.improvements?.length ? <p className="text-sm text-white/50">No improvements were returned. Retry the analysis; no result is being inferred.</p> : null}
+            </div>
           </Card>
 
           {/* AI deep-review (optional — shown only when ai_review is present) */}

@@ -70,6 +70,7 @@ function AnalyzerInner({ resumes, selectedId, select }) {
               {(profile.skills || []).map((s) => (
                 <Chip key={s} tone="mint">{s}</Chip>
               ))}
+              {!profile.skills?.length ? <p className="text-sm text-white/50">No verified skills were extracted. Add a readable Skills section and refresh the analysis.</p> : null}
             </div>
           </Card>
           <Card className="p-5">
@@ -78,18 +79,21 @@ function AnalyzerInner({ resumes, selectedId, select }) {
               {(profile.suggested_roles || []).map((s) => (
                 <Chip key={s} tone="gold">{s}</Chip>
               ))}
+              {!profile.suggested_roles?.length ? <p className="text-sm text-white/50">Choose a target role in Skill Gap or Roadmap to get evidence-based guidance.</p> : null}
             </div>
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-xl">Strengths</h2>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/70">
               {(profile.strengths || []).map((s) => <li key={s}>{s}</li>)}
+              {!profile.strengths?.length ? <li>No strengths were extracted from the available resume text.</li> : null}
             </ul>
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-xl">Improve</h2>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/70">
               {(profile.weaknesses || []).map((s) => <li key={s}>{s}</li>)}
+              {!profile.weaknesses?.length ? <li>No improvement opportunities were extracted yet.</li> : null}
             </ul>
           </Card>
           <Card className="p-5 lg:col-span-2">
@@ -104,6 +108,7 @@ function AnalyzerInner({ resumes, selectedId, select }) {
                   </ul>
                 </div>
               ))}
+              {!profile.work_experience?.length ? <p className="text-sm text-white/50">No structured work experience was extracted. This does not imply that no experience exists in the original document.</p> : null}
             </div>
           </Card>
           <Card className="p-5">
@@ -115,6 +120,7 @@ function AnalyzerInner({ resumes, selectedId, select }) {
                   <p className="text-sm text-white/60">{p.description}</p>
                 </div>
               ))}
+              {!profile.projects?.length ? <p className="text-sm text-white/50">No structured projects were extracted from the available text.</p> : null}
             </div>
           </Card>
           <Card className="p-5">
@@ -128,6 +134,7 @@ function AnalyzerInner({ resumes, selectedId, select }) {
               {(profile.certifications || []).map((c) => (
                 <Chip key={String(c)}>{typeof c === 'string' ? c : JSON.stringify(c)}</Chip>
               ))}
+              {!profile.education?.length && !profile.certifications?.length ? <p className="text-sm text-white/50">No education or certifications were extracted from the available text.</p> : null}
             </div>
           </Card>
         </div>

@@ -10,6 +10,7 @@ from app.schemas.resume_analysis import (
     WorkExperienceItem,
 )
 from app.services.ai_service import is_openai_configured
+from app.services.skill_normalization import normalize_skills, skill_in_text
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +65,7 @@ def _heuristic_resume_analysis(text: str) -> AIResumeAnalysisResult:
         "AWS", "Azure", "GCP", "Git", "Linux", "REST API", "GraphQL", "Java", "C++",
         "Go", "Rust", "HTML", "CSS", "Tailwind", "Machine Learning", "PyTorch", "TensorFlow",
     ]
-    detected_skills = [skill for skill in common_skills if re.search(rf"\b{re.escape(skill.lower())}\b", lower_text)]
-    if not detected_skills:
-        detected_skills = ["Software Engineering", "Problem Solving"]
+    detected_skills = normalize_skills([skill for skill in common_skills if skill_in_text(skill, lower_text)])
 
     # Experience level classification
     if any(k in lower_text for k in ["senior", "lead", "architect", "staff", "principal"]):
@@ -91,37 +90,12 @@ def _heuristic_resume_analysis(text: str) -> AIResumeAnalysisResult:
                 year="Present" if "present" in lower_text else None,
             )
         )
-    else:
-        education.append(
-            EducationItem(
-                degree="Bachelor of Engineering / Computer Science",
-                institution="University",
-                year=None,
-            )
-        )
 
-    # Project detection
+    # A fallback parser cannot safely infer structured projects or employment
+    # records from section headings alone. Leave these empty rather than inventing
+    # a company, title, or project that the candidate did not state explicitly.
     projects: list[ProjectItem] = []
-    if "project" in lower_text:
-        projects.append(
-            ProjectItem(
-                name="Key Technical Project",
-                description="Engineered technical solutions demonstrated in resume.",
-                technologies=detected_skills[:3],
-            )
-        )
-
-    # Work experience detection
     work_experience: list[WorkExperienceItem] = []
-    if any(term in lower_text for term in ["experience", "employment", "internship", "worked at"]):
-        work_experience.append(
-            WorkExperienceItem(
-                company="Engineering Organization",
-                role="Software Engineer",
-                duration="Recent",
-                responsibilities=["Developed and maintained software components."],
-            )
-        )
 
     # Suggested roles
     suggested_roles = ["Software Engineer"]
@@ -133,19 +107,18 @@ def _heuristic_resume_analysis(text: str) -> AIResumeAnalysisResult:
         suggested_roles.append("Data Scientist / ML Engineer")
 
     return AIResumeAnalysisResult(
-        summary=lines[0] if lines else "Demonstrated background in software development and engineering.",
+        summary=lines[0] if lines else "No readable resume content was available.",
         skills=detected_skills,
         education=education,
         projects=projects,
         certifications=[],
         work_experience=work_experience,
         strengths=[
-            f"Technical proficiency across {len(detected_skills)} relevant skills",
-            "Clear section organization and career focus",
+            f"{len(detected_skills)} verified technical skills extracted" if detected_skills else "Add a clear skills section to improve profile accuracy",
         ],
         weaknesses=[
             "Quantify key achievements with measurable numerical metrics",
-            "Include more details regarding system scale and business impact",
+            "Include project, experience, and education details where available",
         ],
         experience_level=level,
         suggested_roles=list(dict.fromkeys(suggested_roles)),

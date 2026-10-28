@@ -70,7 +70,8 @@ def test_complete_platform_lifecycle_flow(client: TestClient, sample_pdf_bytes: 
     )
     assert gap_resp.status_code == 200
     gap_data = gap_resp.json()
-    assert len(gap_data["strong"]) > 0
+    # A listed skill without project/work evidence is intermediate, not falsely strong.
+    assert len(gap_data["strong"]) + len(gap_data["intermediate"]) > 0
     assert len(gap_data["missing"]) > 0
     assert len(gap_data["prioritized_skills"]) > 0
 

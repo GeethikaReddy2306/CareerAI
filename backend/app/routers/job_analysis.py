@@ -43,10 +43,12 @@ def create_job_analysis(
 
     analysis = ensure_analysis(resume, db)
 
-    result_data = job_analysis_service.analyze_job_description(
-        resume_analysis=analysis,
-        job_description=request.job_description,
-    )
+    try:
+        result_data = job_analysis_service.analyze_job_description(
+            resume_analysis=analysis, job_description=request.job_description
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     now = utcnow()
     doc = {

@@ -16,7 +16,7 @@ from collections import Counter
 from openai import OpenAI
 
 from app.core.config import settings
-from app.schemas.resume_analysis import ATSBreakdown, ATSCategory, ATSIssue, ATSScoreResponse
+from app.schemas.resume_analysis import ATSBreakdown, ATSCategory, ATSImprovement, ATSIssue, ATSScoreResponse
 from app.services.ai_service import is_openai_configured
 
 logger = logging.getLogger(__name__)
@@ -414,6 +414,25 @@ def _build_suggestions(
     return suggestions[:6]
 
 
+def _build_improvements(text: str, detected: list[str], missing: list[str], kw_score: float, exp_score: float) -> list[ATSImprovement]:
+    """Return improvements tied directly to the scoring signals in this resume."""
+    result: list[ATSImprovement] = []
+    if missing:
+        sections = ", ".join(missing[:3])
+        result.append(ATSImprovement(issue=f"Missing section(s): {sections}", why_it_matters="ATS parsers and recruiters rely on standard sections to find qualifications consistently.", suggested_correction=f"Add a clearly labelled {missing[0]} section with information already supported by your resume.", priority="High"))
+    if kw_score < 50:
+        result.append(ATSImprovement(issue="Limited recognised technical keyword coverage", why_it_matters="A low keyword relevance component makes it harder to match the resume to a specific job description.", suggested_correction="Add only technologies and tools you genuinely used, grouped under a Skills section and reflected in project or experience bullets.", priority="High"))
+    if exp_score < 40:
+        result.append(ATSImprovement(issue="Few quantified, action-led achievement bullets", why_it_matters="Concrete outcomes make experience easier for both ATS systems and recruiters to evaluate.", suggested_correction="Rewrite relevant bullets with an action, scope, and measured result (for example, a time, percentage, users, or throughput figure).", priority="High"))
+    if "Professional Summary" not in detected:
+        result.append(ATSImprovement(issue="No professional summary detected", why_it_matters="A concise summary clarifies the intended role and strongest relevant experience.", suggested_correction="Add a 2–3 sentence summary using your actual target role, experience, and verified skills.", priority="Medium"))
+    if not re.search(r"\b(github|linkedin|portfolio)\b", text, re.IGNORECASE):
+        result.append(ATSImprovement(issue="No professional portfolio link detected", why_it_matters="A link can help reviewers verify relevant projects beyond the one-page resume.", suggested_correction="Add a current GitHub, LinkedIn, or portfolio URL if you have one.", priority="Low"))
+    if not result:
+        result.append(ATSImprovement(issue="No major deterministic issues detected", why_it_matters="The tested ATS structure, section coverage, and formatting signals are healthy.", suggested_correction="Tailor keywords and achievement examples to each target job description before applying.", priority="Low"))
+    return result[:6]
+
+
 # ─── Deterministic engine ─────────────────────────────────────────────────────
 
 def _calculate_deterministic_score(text: str) -> ATSScoreResponse:
@@ -454,6 +473,8 @@ def _calculate_deterministic_score(text: str) -> ATSScoreResponse:
         detected_sections=detected,
         missing_sections=missing,
         suggestions=_build_suggestions(text, detected, missing, kw, exp),
+        improvements=_build_improvements(text, detected, missing, kw, exp),
+        analysis_mode="deterministic",
         categories=_build_categories(text),
         ai_review=None,
     )
@@ -489,6 +510,8 @@ def _parse_openai_response(parsed: dict) -> ATSScoreResponse:
         missing_sections=parsed.get("missing_sections") or [],
         detected_sections=parsed.get("detected_sections") or [],
         suggestions=parsed.get("suggestions") or [],
+        improvements=[],
+        analysis_mode="ai_validated",
         categories=categories,
         ai_review=None,  # populated separately by the router via get_llm_review()
     )
@@ -506,6 +529,7 @@ def _empty_resume_response() -> ATSScoreResponse:
         missing_sections=ALL_STANDARD_SECTIONS,
         detected_sections=[],
         suggestions=["The resume appears to be empty. Please upload a PDF with readable text."],
+        improvements=[ATSImprovement(issue="No readable resume content", why_it_matters="A score cannot be calculated without extracted text.", suggested_correction="Upload a text-based PDF resume with readable content.", priority="High")],
         categories=[],
         ai_review=None,
     )
@@ -518,39 +542,12 @@ def calculate_ats_score(text: str) -> ATSScoreResponse:
     Calculate an ATS compatibility score for the given resume text.
 
     - Returns score=0 only if the resume text is empty/blank.
-    - Uses OpenAI when configured and reachable (richer output).
-    - Falls back automatically to the deterministic engine on any OpenAI
-      failure (expired key, quota, timeout, network error, bad JSON, etc.)
-      so the feature always produces a real score.
+    The score is intentionally deterministic. LLM output is reserved for the
+    optional review, so a provider outage cannot make scores or improvements
+    inconsistent for identical resumes.
     """
     if not text or not text.strip():
         return _empty_resume_response()
 
-    # ── Try OpenAI first ──────────────────────────────────────────────────────
-    if is_openai_configured():
-        try:
-            client = OpenAI(api_key=settings.OPENAI_API_KEY.strip(), timeout=30.0, max_retries=0)
-            response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": ATS_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"RESUME TEXT:\n\n{text}"},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            content = response.choices[0].message.content or "{}"
-            parsed = json.loads(content)
-            logger.info("ATS score generated via OpenAI")
-            return _parse_openai_response(parsed)
-
-        except Exception as exc:
-            logger.warning(
-                "OpenAI ATS scoring failed (%s: %s) — falling back to deterministic engine.",
-                type(exc).__name__, exc,
-            )
-            # Fall through to deterministic engine below
-
-    # ── Deterministic engine (always works) ──────────────────────────────────
     logger.info("ATS score generated via deterministic engine")
     return _calculate_deterministic_score(text)

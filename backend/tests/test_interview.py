@@ -69,6 +69,8 @@ def test_interview_questions_with_job_description(
     assert response.status_code == 201
     data = response.json()
     assert len(data["questions"]) == 7
+    normalized = {" ".join(question["question"].lower().split()) for question in data["questions"]}
+    assert len(normalized) == len(data["questions"])
 
 
 def test_interview_questions_unauthorized_resume_fails(

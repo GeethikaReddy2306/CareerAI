@@ -1,113 +1,87 @@
 from typing import Any
+
 from pydantic import BaseModel, Field
-from app.schemas.career_roadmap import RoadmapPhase, RoadmapResponse
+
+from app.schemas.career_roadmap import RoadmapPhase
 from app.schemas.skill_gap import SkillGapResponse
 from app.services.ai_service import call_structured_ai
+from app.services.skill_normalization import normalize_skills
 
 
 class AIRoadmapSchema(BaseModel):
     roadmap: list[RoadmapPhase] = Field(default_factory=list)
 
 
-def _heuristic_roadmap(
-    target_role: str,
-    current_level: str,
-    known_skills: list[str],
-    gap_skills: list[str],
-) -> AIRoadmapSchema:
-    """Deterministic fallback roadmap generator that respects candidate's existing skills."""
+PREREQUISITE_ORDER = [
+    ("foundations", {"Python", "JavaScript", "TypeScript", "SQL", "HTML/CSS", "Linux"}),
+    ("application development", {"React", "FastAPI", "Django", "REST APIs", "PostgreSQL", "MongoDB", "Docker"}),
+    ("delivery and scale", {"AWS", "GCP", "Azure", "Kubernetes", "CI/CD", "Caching", "Message Queues", "System Design", "Terraform"}),
+]
+
+
+def _phase(index: int, title: str, skills: list[str], target_role: str, priority: str) -> RoadmapPhase:
+    skill_text = ", ".join(skills)
+    return RoadmapPhase(
+        phase=index,
+        title=title,
+        description=f"Close the {skill_text} gap for {target_role} through applied work. Estimated duration assumes 6–8 focused hours per week.",
+        skills=skills,
+        topics=[f"Core concepts and trade-offs in {skill}" for skill in skills],
+        projects=[f"Extend an existing portfolio project to demonstrate {skill_text}"],
+        estimated_weeks=max(2, min(6, len(skills) * 2)),
+        priority=priority,
+        objectives=[f"Explain when to use {skill} and implement it in a working project" for skill in skills],
+        completion_criteria=[f"Commit a reviewed implementation demonstrating {skill}" for skill in skills],
+        resource_search_terms=[f"{skill} practical project tutorial" for skill in skills],
+    )
+
+
+def _deterministic_roadmap(target_role: str, skill_gap: SkillGapResponse) -> list[RoadmapPhase]:
+    gaps = normalize_skills(skill_gap.missing + skill_gap.weak)
+    if not gaps:
+        return [RoadmapPhase(
+            phase=1, title="Validate role evidence", priority="Low", estimated_weeks=2, skills=[],
+            description=f"No unverified skill gaps were found for {target_role}. Strengthen evidence for the target role instead of repeating beginner material. Estimate assumes 6–8 hours per week.",
+            topics=["Tailor resume evidence to the target role", "Practice role-specific explanations"],
+            projects=["Document measurable outcomes and architecture decisions from an existing project"],
+            objectives=["Connect each claimed skill to a concrete project or work example"],
+            completion_criteria=["Resume contains role-relevant evidence for every claimed core skill"],
+            resource_search_terms=[f"{target_role} portfolio case study examples"],
+        )]
+    pending = gaps.copy()
     phases: list[RoadmapPhase] = []
-    phase_num = 1
+    for label, dependencies in PREREQUISITE_ORDER:
+        group = [skill for skill in pending if skill in dependencies]
+        if group:
+            pending = [skill for skill in pending if skill not in group]
+            phases.append(_phase(len(phases) + 1, label.title(), group[:3], target_role, "High" if len(phases) == 0 else "Medium"))
+    while pending:
+        group, pending = pending[:3], pending[3:]
+        phases.append(_phase(len(phases) + 1, "Target-role capability", group, target_role, "Medium"))
+    return phases
 
-    # Filter gap skills
-    high_priority_gaps = [s for s in gap_skills if s in ["Docker", "Kubernetes", "AWS", "Azure", "GCP", "PostgreSQL", "SQL"]]
-    adv_gaps = [s for s in gap_skills if s in ["System Design", "Caching", "Message Queues", "Microservices", "CI/CD"]]
-    other_gaps = [s for s in gap_skills if s not in high_priority_gaps and s not in adv_gaps]
 
-    # Phase 1: Infrastructure & Cloud (if needed) or Core Gaps
-    p1_skills = high_priority_gaps[:3] or (gap_skills[:2] if gap_skills else ["Docker", "AWS"])
-    phases.append(
-        RoadmapPhase(
-            phase=phase_num,
-            title="Containerization & Cloud Infrastructure",
-            description=f"Establish robust containerized environments and cloud deployment fundamentals for {target_role}.",
-            skills=p1_skills,
-            topics=["Docker containerization & multi-stage builds", "Cloud deployment best practices", "Environment isolation"],
-            projects=["Dockerize existing backend APIs with PostgreSQL and automated Docker Compose environment"],
-            estimated_weeks=3,
-            priority="High",
-        )
+def _validate_roadmap(phases: list[RoadmapPhase], known_skills: list[str], gap_skills: list[str]) -> list[RoadmapPhase]:
+    known = {skill.casefold() for skill in known_skills}
+    gaps = {skill.casefold() for skill in gap_skills}
+    clean: list[RoadmapPhase] = []
+    for phase in sorted(phases, key=lambda item: item.phase):
+        skills = [skill for skill in normalize_skills(phase.skills) if skill.casefold() not in known and skill.casefold() in gaps]
+        if skills:
+            clean.append(phase.model_copy(update={"phase": len(clean) + 1, "skills": skills[:3], "estimated_weeks": max(1, phase.estimated_weeks)}))
+    return clean
+
+
+def generate_career_roadmap(resume_analysis: dict[str, Any], target_role: str, skill_gap: SkillGapResponse) -> list[RoadmapPhase]:
+    """Create a gap-driven plan; AI prose is accepted only after deterministic validation."""
+    known = normalize_skills(skill_gap.strong + skill_gap.intermediate)
+    gaps = normalize_skills(skill_gap.missing + skill_gap.weak)
+    fallback = lambda: AIRoadmapSchema(roadmap=_deterministic_roadmap(target_role, skill_gap))
+    result = call_structured_ai(
+        prompt=(f"Create 2-4 ordered roadmap phases for {target_role}. Known skills: {known}. Skill gaps: {gaps}. "
+                "Use only gap skills, order prerequisites first, include objectives, completion criteria, resource search terms and estimated weeks. Return JSON {'roadmap': [...]}"),
+        system_prompt="You are a career planner. Do not invent resource URLs, credentials, experience, or skills.",
+        schema_cls=AIRoadmapSchema, fallback_factory=fallback,
     )
-    phase_num += 1
-
-    # Phase 2: Scalability & Distributed Systems
-    p2_skills = adv_gaps[:3] or ["System Design", "Caching", "Message Queues"]
-    phases.append(
-        RoadmapPhase(
-            phase=phase_num,
-            title="Backend Architecture & Distributed Systems",
-            description="Master horizontal scalability, caching strategies, and event-driven architecture.",
-            skills=p2_skills,
-            topics=["REST API architectural patterns", "In-memory caching with Redis", "Asynchronous messaging with RabbitMQ/Kafka", "Database query indexing"],
-            projects=["Architect a high-throughput event processing service with Redis caching and background task queues"],
-            estimated_weeks=4,
-            priority="High",
-        )
-    )
-    phase_num += 1
-
-    # Phase 3: Production Engineering & Senior Readiness
-    p3_skills = other_gaps[:2] or ["CI/CD", "Monitoring", "Production Reliability"]
-    phases.append(
-        RoadmapPhase(
-            phase=phase_num,
-            title="Production Engineering & CI/CD Automation",
-            description=f"Elevate engineering practices to meet {target_role} production standards.",
-            skills=p3_skills,
-            topics=["Automated testing & linting workflows", "GitHub Actions CI/CD pipelines", "Observability, health checks, and structured logging"],
-            projects=["Implement an end-to-end automated deployment pipeline with GitHub Actions and container registries"],
-            estimated_weeks=2,
-            priority="Medium",
-        )
-    )
-
-    return AIRoadmapSchema(roadmap=phases)
-
-
-def generate_career_roadmap(
-    resume_analysis: dict[str, Any],
-    target_role: str,
-    skill_gap: SkillGapResponse,
-) -> list[RoadmapPhase]:
-    """Generate a personalized, gap-focused career roadmap avoiding basics the candidate already knows."""
-    known_skills = list(dict.fromkeys(skill_gap.strong + skill_gap.intermediate))
-    gap_skills = list(dict.fromkeys(skill_gap.missing + skill_gap.weak))
-    current_level = resume_analysis.get("experience_level") or "Junior"
-
-    def fallback():
-        return _heuristic_roadmap(target_role, current_level, known_skills, gap_skills)
-
-    prompt = (
-        f"Generate a personalized, structured learning roadmap for a candidate aiming to become a '{target_role}'.\n\n"
-        f"Candidate Current Level: {current_level}\n"
-        f"Candidate ALREADY Knows (DO NOT TEACH BASICS OF THESE): {', '.join(known_skills) if known_skills else 'Basic programming'}\n"
-        f"Candidate Target Skill Gaps & Weaknesses: {', '.join(gap_skills) if gap_skills else 'Advanced system design, distributed systems'}\n\n"
-        f"Generate 3 to 4 chronological phases. Each phase must have: 'phase' (int), 'title' (str), 'description' (str), "
-        f"'skills' (list of str), 'topics' (list of str), 'projects' (list of str), 'estimated_weeks' (int), 'priority' ('High'|'Medium'|'Low').\n"
-        f"Return JSON: {{'roadmap': [...]}}"
-    )
-
-    system_prompt = (
-        "You are an elite technical career advisor. You create highly practical, personalized engineering roadmaps. "
-        "Never recommend basic intro tutorials for skills the candidate already has master or intermediate experience in."
-    )
-
-    ai_result = call_structured_ai(
-        prompt=prompt,
-        system_prompt=system_prompt,
-        schema_cls=AIRoadmapSchema,
-        fallback_factory=fallback,
-    )
-
-    return ai_result.roadmap if ai_result.roadmap else fallback().roadmap
-
+    validated = _validate_roadmap(result.roadmap, known, gaps)
+    return validated or _deterministic_roadmap(target_role, skill_gap)

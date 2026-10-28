@@ -2,10 +2,7 @@ import re
 from typing import Any
 from pydantic import BaseModel, Field
 from app.services.ai_service import call_structured_ai
-from app.services.skill_gap_service import (
-    SKILL_NORMALIZATION_MAP,
-    normalize_skill,
-)
+from app.services.skill_normalization import normalize_skill, normalize_skills, skill_in_text
 
 COMMON_TECH_KEYWORDS = [
     "python", "fastapi", "django", "flask", "javascript", "typescript", "react",
@@ -44,11 +41,6 @@ def _heuristic_extract_jd(job_description: str) -> AIJobExtractionSchema:
             if norm not in found_keywords:
                 found_keywords.append(norm)
 
-    # If no specific skills detected, extract capitalized phrases
-    if not found_skills:
-        found_skills = ["Python", "FastAPI", "SQL", "Docker"]
-        found_keywords = ["REST APIs", "Database", "Backend Architecture"]
-
     return AIJobExtractionSchema(
         required_skills=found_skills,
         important_keywords=found_keywords[:6],
@@ -82,9 +74,9 @@ def analyze_job_description(
         fallback_factory=fallback,
     )
 
-    jd_skills = [normalize_skill(s) for s in ai_jd.required_skills]
-    # Deduplicate while preserving order
-    jd_skills = list(dict.fromkeys(jd_skills))
+    jd_skills = normalize_skills(ai_jd.required_skills)
+    if not jd_skills:
+        raise ValueError("No explicit, supported skill requirements could be extracted from this job description.")
 
     candidate_skills = [normalize_skill(s) for s in (resume_analysis.get("skills") or [])]
     candidate_skills_lower = {s.lower(): s for s in candidate_skills}
@@ -120,7 +112,7 @@ def analyze_job_description(
         req_lower = req_skill.lower()
         if req_lower in candidate_skills_lower:
             # Check how deeply candidate used it in projects/experience
-            mentions = len(re.findall(rf"\b{re.escape(req_lower)}\b", candidate_context))
+            mentions = 1 if skill_in_text(req_skill, candidate_context) else 0
             is_advanced_in_jd = bool(re.search(rf"\b(advanced|expert|lead|architect|5\+\s*years)\b[^\n]*\b{re.escape(req_lower)}\b", lower_jd))
             if is_advanced_in_jd and mentions < 2:
                 partial_skills.append(req_skill)
@@ -128,12 +120,6 @@ def analyze_job_description(
                 matched_skills.append(req_skill)
         else:
             missing_skills.append(req_skill)
-
-    # If all skills ended up missing or empty, ensure at least primary matched candidate skills are considered
-    if not matched_skills and not partial_skills:
-        for cs in candidate_skills:
-            if cs.lower() in lower_jd:
-                matched_skills.append(cs)
 
     # 2. Meaningful multi-factor scoring calculation (0-100)
     total_req_count = max(len(jd_skills), 1)
@@ -163,7 +149,7 @@ def analyze_job_description(
     # Tailor interview topics
     topics = list(dict.fromkeys(ai_jd.interview_topics + [f"{s} Implementation" for s in matched_skills[:3]]))
     if not topics:
-        topics = ["FastAPI Architecture", "REST API Design", "PostgreSQL Optimization", "Docker Deployment"]
+        topics = [f"{skill} implementation" for skill in jd_skills[:4]]
 
     # Recommendations
     recs = list(dict.fromkeys(ai_jd.recommendations))

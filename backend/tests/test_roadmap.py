@@ -71,3 +71,19 @@ def test_career_roadmap_unauthorized_resume_fails(
     )
     assert get_resp.status_code == 404
 
+
+def test_roadmap_progress_persists_for_its_owner(
+    client: TestClient, auth_headers: dict[str, str], sample_pdf_bytes: bytes
+):
+    upload = client.post("/api/resumes/upload", files={"file": ("resume.pdf", sample_pdf_bytes, "application/pdf")}, headers=auth_headers)
+    created = client.post("/api/career/roadmap", json={"resume_id": upload.json()["id"], "target_role": "Backend Developer"}, headers=auth_headers)
+    roadmap = created.json()
+    skill = roadmap["roadmap"][0]["skills"][0]
+
+    updated = client.patch(f"/api/career/roadmap/{roadmap['id']}/progress", json={"completed_skills": [skill, "Unrelated Skill"]}, headers=auth_headers)
+    assert updated.status_code == 200
+    assert updated.json()["completed_skills"] == [skill]
+
+    saved = client.get(f"/api/career/roadmap?resume_id={upload.json()['id']}", headers=auth_headers)
+    assert saved.json()["completed_skills"] == [skill]
+

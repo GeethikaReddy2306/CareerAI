@@ -88,6 +88,7 @@ function PrepInner({ resumes, selectedId, select }) {
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
       {busy ? <Spinner /> : null}
       <div className="space-y-4">
+        {!busy && !questions.length ? <Card className="p-5"><p className="text-sm text-white/55">Choose a resume and target role, then generate questions. Saved questions will appear here after generation.</p></Card> : null}
         {Object.entries(grouped).map(([cat, items]) => (
           <Card key={cat} className="p-5">
             <h2 className="font-display text-xl">{cat}</h2>

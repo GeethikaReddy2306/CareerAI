@@ -50,6 +50,13 @@ class ATSCategory(BaseModel):
     issues: list[ATSIssue] = []
 
 
+class ATSImprovement(BaseModel):
+    issue: str
+    why_it_matters: str
+    suggested_correction: str
+    priority: str = Field(..., pattern="^(High|Medium|Low)$")
+
+
 class ATSBreakdown(BaseModel):
     keyword_relevance: float = Field(..., description="Relevance and breadth of industry keywords (30%)")
     structure: float = Field(..., description="Logical structure and readability (20%)")
@@ -65,6 +72,9 @@ class ATSScoreResponse(BaseModel):
     missing_sections: list[str] = Field(default_factory=list, description="Sections not detected")
     detected_sections: list[str] = Field(default_factory=list, description="Standard sections found")
     suggestions: list[str] = Field(default_factory=list, description="Actionable recommendations")
+    improvements: list[ATSImprovement] = Field(default_factory=list, description="Evidence-based, prioritised improvements")
+    calculation_note: str = Field(default="Weighted heuristic compatibility estimate; not a score from an ATS vendor.")
+    analysis_mode: str = Field(default="deterministic", description="deterministic or ai_validated")
     categories: list[ATSCategory] = []
     ai_review: dict[str, Any] | None = Field(
         default=None,

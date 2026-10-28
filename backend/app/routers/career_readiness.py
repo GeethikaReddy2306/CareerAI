@@ -34,10 +34,10 @@ def get_career_readiness(
 
     analysis = ensure_analysis(resume, db)
 
-    skill_gap = skill_gap_service.analyze_skill_gaps(
-        resume_analysis=analysis,
-        target_role=target_role,
-    )
+    try:
+        skill_gap = skill_gap_service.analyze_skill_gaps(resume_analysis=analysis, target_role=target_role)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     readiness = career_readiness_service.calculate_career_readiness(
         resume_analysis=analysis,

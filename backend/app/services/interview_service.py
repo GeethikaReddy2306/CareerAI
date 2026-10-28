@@ -1,4 +1,6 @@
-from typing import Any
+from typing import Any, Iterable
+import re
+from difflib import SequenceMatcher
 from pydantic import BaseModel, Field
 from app.schemas.interview import InterviewQuestionItem
 from app.schemas.skill_gap import SkillGapResponse
@@ -13,6 +15,34 @@ CATEGORIES = [
     "Behavioral",
     "HR",
 ]
+
+
+def normalize_question(question: str) -> str:
+    """Canonical form for exact and near-duplicate question detection."""
+    return " ".join(re.findall(r"[a-z0-9]+", (question or "").casefold()))
+
+
+def is_duplicate_question(question: str, existing: Iterable[str], threshold: float = 0.86) -> bool:
+    candidate = normalize_question(question)
+    if not candidate:
+        return True
+    for previous in existing:
+        normal = normalize_question(previous)
+        if candidate == normal or SequenceMatcher(None, candidate, normal).ratio() >= threshold:
+            return True
+    return False
+
+
+def unique_questions(candidates: Iterable[InterviewQuestionItem], excluded: Iterable[str], limit: int) -> list[InterviewQuestionItem]:
+    selected: list[InterviewQuestionItem] = []
+    seen = list(excluded)
+    for candidate in candidates:
+        if not is_duplicate_question(candidate.question, seen):
+            selected.append(candidate)
+            seen.append(candidate.question)
+            if len(selected) == limit:
+                break
+    return selected
 
 
 class AIInterviewQuestionsSchema(BaseModel):
@@ -31,7 +61,7 @@ def _heuristic_interview_questions(
     secondary_skill = primary_skills[1] if len(primary_skills) > 1 else "FastAPI"
 
     projects = resume_analysis.get("projects") or []
-    project_name = projects[0].get("name", "your core project") if projects else "your recent backend project"
+    project_name = projects[0].get("name", "a project you can discuss") if projects else "a project you can discuss"
 
     missing_skill = skill_gap.missing[0] if skill_gap.missing else "Docker"
     weak_skill = skill_gap.weak[0] if skill_gap.weak else "System Design"
@@ -58,14 +88,14 @@ def _heuristic_interview_questions(
             topic="Resume Architecture",
         ),
         InterviewQuestionItem(
-            question="In your resume you noted performance optimization and indexing. What profiling tools or query explain plans did you use?",
+            question=f"Which example on your resume best demonstrates {primary_skill}, and what decision or trade-off did you make?",
             category="Resume Based",
             difficulty="Hard",
             topic="Performance Optimization",
         ),
         # 3. Project Based
         InterviewQuestionItem(
-            question=f"Walk me through the system architecture of '{project_name}'. What were the biggest technical hurdles you overcame?",
+            question=f"Walk through the architecture of '{project_name}'. What was the most important technical decision and why?",
             category="Project Based",
             difficulty="Medium",
             topic=project_name,
@@ -152,6 +182,7 @@ def generate_interview_questions(
     skill_gap: SkillGapResponse,
     job_description: str | None = None,
     question_count: int = 15,
+    excluded_questions: list[str] | None = None,
 ) -> list[InterviewQuestionItem]:
     """Generate categorized, personalized interview questions."""
     def fallback():
@@ -206,7 +237,13 @@ def generate_interview_questions(
             questions.append(fq)
             existing_cats.add(fq.category)
 
-    return questions[:question_count]
+    unique = unique_questions(questions, excluded_questions or [], question_count)
+    if len(unique) < question_count:
+        # Deterministic fallback may be more varied than malformed AI output.
+        unique = unique_questions(fallback().questions, excluded_questions or [], question_count)
+    if len(unique) < question_count:
+        raise ValueError("Could not create enough unique interview questions for this session. Try a different role or request fewer questions.")
+    return unique
 
 
 class AIAnswerEvaluationSchema(BaseModel):

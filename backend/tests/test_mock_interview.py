@@ -46,3 +46,13 @@ def test_evaluate_mock_answer_returns_score(client):
     assert 0 <= body["score"] <= 100
     assert body["verdict"] in ("Strong", "Adequate", "Needs Work")
     assert body["feedback"]
+
+
+def test_mock_answer_is_persisted_to_the_owned_session(client, sample_pdf_bytes):
+    headers = _auth_headers(client)
+    upload = client.post("/api/resumes/upload", files={"file": ("resume.pdf", sample_pdf_bytes, "application/pdf")}, headers=headers)
+    generated = client.post("/api/interview/questions", json={"resume_id": upload.json()["id"], "target_role": "Backend Developer", "question_count": 5}, headers=headers)
+    assert generated.status_code == 201
+    item = generated.json()["questions"][0]
+    evaluation = client.post("/api/interview/evaluate", json={"question": item["question"], "answer": "I would explain the trade-offs, use a concrete example, and measure the result.", "category": item["category"], "topic": item["topic"], "session_id": generated.json()["session_id"]}, headers=headers)
+    assert evaluation.status_code == 200

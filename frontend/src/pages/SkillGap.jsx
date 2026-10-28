@@ -13,6 +13,10 @@ export default function SkillGap() {
   )
 }
 
+function SkillGroup({ title, skills = [], tone }) {
+  return <Card className="p-5"><h2 className="font-display text-lg">{title}</h2>{skills.length ? <div className="mt-2 flex flex-wrap gap-2">{skills.map((skill) => <Chip key={skill} tone={tone}>{skill}</Chip>)}</div> : <p className="mt-2 text-sm text-white/50">No skills currently classified in this category.</p>}</Card>
+}
+
 function GapInner({ resumes, selectedId, select }) {
   const { user } = useAuth()
   const [role, setRole] = useState('Backend Developer')
@@ -55,22 +59,10 @@ function GapInner({ resumes, selectedId, select }) {
       {busy ? <Spinner /> : null}
       {result ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="p-5">
-            <h2 className="font-display text-lg">Strong</h2>
-            <div className="mt-2 flex flex-wrap gap-2">{result.strong?.map((s) => <Chip key={s} tone="mint">{s}</Chip>)}</div>
-          </Card>
-          <Card className="p-5">
-            <h2 className="font-display text-lg">Intermediate</h2>
-            <div className="mt-2 flex flex-wrap gap-2">{result.intermediate?.map((s) => <Chip key={s} tone="blue">{s}</Chip>)}</div>
-          </Card>
-          <Card className="p-5">
-            <h2 className="font-display text-lg">Weak</h2>
-            <div className="mt-2 flex flex-wrap gap-2">{result.weak?.map((s) => <Chip key={s} tone="gold">{s}</Chip>)}</div>
-          </Card>
-          <Card className="p-5">
-            <h2 className="font-display text-lg">Missing</h2>
-            <div className="mt-2 flex flex-wrap gap-2">{result.missing?.map((s) => <Chip key={s} tone="rose">{s}</Chip>)}</div>
-          </Card>
+          <SkillGroup title="Strong" skills={result.strong} tone="mint" />
+          <SkillGroup title="Intermediate" skills={result.intermediate} tone="blue" />
+          <SkillGroup title="Weak" skills={result.weak} tone="gold" />
+          <SkillGroup title="Missing" skills={result.missing} tone="rose" />
           <Card className="p-5 lg:col-span-2">
             <h2 className="font-display text-lg">Learn first</h2>
             <div className="mt-3 space-y-2">
@@ -86,6 +78,7 @@ function GapInner({ resumes, selectedId, select }) {
                   <p className="mt-1 text-sm text-white/60">{item.reason}</p>
                 </div>
               ))}
+              {!result.prioritized_skills?.length ? <p className="text-sm text-white/50">No priority list is available until a resume and target role can be evaluated.</p> : null}
             </div>
           </Card>
         </div>

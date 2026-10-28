@@ -13,6 +13,13 @@ def test_skill_normalization_utility():
     assert normalize_skill("golang") == "Go"
     assert normalize_skill("k8s") == "Kubernetes"
     assert normalize_skill("docker") == "Docker"
+    assert normalize_skill("JS") == "JavaScript"
+
+
+def test_java_does_not_match_javascript():
+    from app.services.skill_normalization import skill_in_text
+    assert skill_in_text("JavaScript", "Built a JavaScript application")
+    assert not skill_in_text("Java", "Built a JavaScript application")
 
 
 def test_skill_gap_success_default_role(client: TestClient, auth_headers: dict[str, str], sample_pdf_bytes: bytes):

@@ -6,6 +6,7 @@ class InterviewQuestionsRequest(BaseModel):
     target_role: str = Field(..., min_length=2, max_length=255, description="Target job title or role")
     job_description: str | None = Field(default=None, description="Optional job description text for deeper tailoring")
     question_count: int = Field(default=15, ge=5, le=50, description="Total number of questions to generate (5-50)")
+    session_id: str | None = Field(default=None, description="Continue an existing interview session")
 
 
 class InterviewQuestionItem(BaseModel):
@@ -24,6 +25,7 @@ class InterviewQuestionsResponse(BaseModel):
     questions: list[InterviewQuestionItem] = Field(
         default_factory=list, description="Personalized questions categorized across 7 core dimensions"
     )
+    session_id: str | None = None
 
 
 class MockAnswerRequest(BaseModel):
@@ -32,6 +34,7 @@ class MockAnswerRequest(BaseModel):
     category: str = Field(default="Technical", description="Question category")
     topic: str = Field(default="General", description="Topic the question covers")
     target_role: str | None = Field(default=None, description="Optional target role for context")
+    session_id: str | None = Field(default=None, description="Interview session that owns this answer")
 
 
 class MockAnswerEvaluation(BaseModel):

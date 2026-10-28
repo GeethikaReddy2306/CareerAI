@@ -33,9 +33,10 @@ def evaluate_skill_gap(
 
     analysis = ensure_analysis(resume, db)
 
-    result = skill_gap_service.analyze_skill_gaps(
-        resume_analysis=analysis,
-        target_role=request.target_role,
-        target_skills=request.target_skills,
-    )
+    try:
+        result = skill_gap_service.analyze_skill_gaps(
+            resume_analysis=analysis, target_role=request.target_role, target_skills=request.target_skills
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     return result

@@ -8,7 +8,7 @@ export function useSelectedResume() {
   const [resumes, setResumes] = useState([])
   const [selectedId, setSelectedId] = useState(() => {
     const raw = sessionStorage.getItem(STORAGE_KEY)
-    return raw ? Number(raw) : null
+    return raw || null
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -46,7 +46,7 @@ export function ResumePicker({ resumes, selectedId, onChange, label = 'Resume' }
   }
   return (
     <Field label={label}>
-      <select className={inputClass()} value={selectedId || ''} onChange={(e) => onChange(Number(e.target.value))}>
+      <select className={inputClass()} value={selectedId || ''} onChange={(e) => onChange(e.target.value)}>
         {resumes.map((r) => (
           <option key={r.id} value={r.id}>
             #{r.id} · {r.original_filename}

@@ -65,6 +65,7 @@ export const careerApi = {
     api.get('/api/career-readiness', { params: { resume_id: resumeId, target_role: targetRole } }),
   createRoadmap: (payload) => api.post('/api/career/roadmap', payload),
   getRoadmap: (resumeId) => api.get('/api/career/roadmap', { params: { resume_id: resumeId } }),
+  updateRoadmapProgress: (roadmapId, completed_skills) => api.patch(`/api/career/roadmap/${roadmapId}/progress`, { completed_skills }),
   createQuestions: (payload) => api.post('/api/interview/questions', payload),
   getQuestions: (resumeId) => api.get('/api/interview/questions', { params: { resume_id: resumeId } }),
   evaluateAnswer: (payload) => api.post('/api/interview/evaluate', payload),

@@ -32,17 +32,19 @@ RESUME TEXT:
 """
 
 FALLBACK_REVIEW = {
+    "status": "unavailable",
     "clarity_score": None,
     "impact_score": None,
     "grammar_issues": [],
     "weak_bullets": [],
     "missing_impact_keywords": [],
-    "overall_feedback": "AI review is unavailable. Showing the ATS score only.",
+    "overall_feedback": "AI-generated review is unavailable. The deterministic ATS analysis above is still complete; verify the AI provider configuration and retry when it is available.",
 }
 
 
 def _normalize_review(parsed: dict) -> dict:
     return {
+        "status": "available",
         "clarity_score": parsed.get("clarity_score"),
         "impact_score": parsed.get("impact_score"),
         "grammar_issues": parsed.get("grammar_issues") or [],
@@ -80,6 +82,6 @@ def get_llm_review(resume_text: str) -> dict:
             return FALLBACK_REVIEW
         return _normalize_review(parsed)
 
-    except Exception:
-        logger.exception("OpenAI resume deep-review failed; returning fallback")
-        return FALLBACK_REVIEW
+    except Exception as exc:
+        logger.warning("OpenAI resume deep-review failed (%s); returning explicit unavailable status", type(exc).__name__)
+        return FALLBACK_REVIEW.copy()

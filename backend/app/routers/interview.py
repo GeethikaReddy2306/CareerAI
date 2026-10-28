@@ -20,6 +20,7 @@ router = APIRouter(prefix="/interview/questions", tags=["Interview Prep"])
 session_router = APIRouter(prefix="/interview", tags=["Interview Prep"])
 
 _IQ = "interview_questions"
+_SESSIONS = "interview_sessions"
 
 
 @router.post(
@@ -44,21 +45,33 @@ def create_interview_questions(
 
     analysis = ensure_analysis(resume, db)
 
-    skill_gap = skill_gap_service.analyze_skill_gaps(
-        resume_analysis=analysis,
-        target_role=request.target_role,
-    )
-
-    questions = interview_service.generate_interview_questions(
-        resume_analysis=analysis,
-        target_role=request.target_role,
-        skill_gap=skill_gap,
-        job_description=request.job_description,
-        question_count=request.question_count,
-    )
+    try:
+        skill_gap = skill_gap_service.analyze_skill_gaps(resume_analysis=analysis, target_role=request.target_role)
+        user_oid = to_object_id(current_user["id"])
+        previous = [row["question"] for row in db[_IQ].find({"user_id": user_oid, "resume_id": resume["_id"], "target_role": request.target_role}, {"question": 1}).sort("created_at", -1).limit(100)]
+        questions = interview_service.generate_interview_questions(
+            resume_analysis=analysis, target_role=request.target_role, skill_gap=skill_gap,
+            job_description=request.job_description, question_count=request.question_count, excluded_questions=previous,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     now = utcnow()
-    user_oid = to_object_id(current_user["id"])
+    session_id = request.session_id
+    if session_id:
+        try:
+            session_oid = to_object_id(session_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview session not found")
+        session = db[_SESSIONS].find_one({"_id": session_oid, "user_id": user_oid, "resume_id": resume["_id"]})
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview session not found")
+    else:
+        session_oid = db[_SESSIONS].insert_one({
+            "user_id": user_oid, "resume_id": resume["_id"], "target_role": request.target_role,
+            "created_at": now, "updated_at": now, "questions": [], "answers": [],
+        }).inserted_id
+        session_id = str(session_oid)
     db_docs = [
         {
             "user_id": user_oid,
@@ -68,14 +81,16 @@ def create_interview_questions(
             "question": q.question,
             "difficulty": q.difficulty,
             "topic": q.topic,
+            "session_id": session_oid,
             "created_at": now,
         }
         for q in questions
     ]
     if db_docs:
         db[_IQ].insert_many(db_docs)
+        db[_SESSIONS].update_one({"_id": session_oid}, {"$push": {"questions": {"$each": [q.model_dump() for q in questions]}}, "$set": {"updated_at": now}})
 
-    return InterviewQuestionsResponse(questions=questions)
+    return InterviewQuestionsResponse(questions=questions, session_id=session_id)
 
 
 @router.get(
@@ -125,8 +140,9 @@ def get_interview_questions(
 def evaluate_mock_interview_answer(
     request: MockAnswerRequest,
     current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Database, Depends(get_db)],
 ):
-    _ = current_user
+    user_oid = to_object_id(current_user["id"])
     result = interview_service.evaluate_mock_answer(
         question=request.question,
         answer=request.answer,
@@ -134,10 +150,22 @@ def evaluate_mock_interview_answer(
         topic=request.topic,
         target_role=request.target_role,
     )
-    return MockAnswerEvaluation(
+    response = MockAnswerEvaluation(
         score=result.score,
         verdict=result.verdict,
         feedback=result.feedback,
         strengths=result.strengths,
         improvements=result.improvements,
     )
+    if request.session_id:
+        try:
+            session_oid = to_object_id(request.session_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview session not found")
+        updated = db[_SESSIONS].update_one(
+            {"_id": session_oid, "user_id": user_oid},
+            {"$push": {"answers": {"question": request.question, "answer": request.answer, "category": request.category, "topic": request.topic, "evaluation": response.model_dump(), "created_at": utcnow()}}, "$set": {"updated_at": utcnow()}},
+        )
+        if not updated.matched_count:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview session not found")
+    return response

@@ -25,13 +25,13 @@ def calculate_career_readiness(
     if resume_analysis.get("ats_score") is not None:
         score_resume_quality = float(resume_analysis["ats_score"])
     else:
-        # Fallback baseline based on section completeness
-        score_resume_quality = 75.0
+        # No ATS assessment exists yet; do not invent a positive quality score.
+        score_resume_quality = 0.0
 
     # 3. Project Experience (15% weight)
     projects = resume_analysis.get("projects") or []
     num_projects = len(projects)
-    score_project = 55.0
+    score_project = 0.0
     if num_projects >= 3:
         score_project += 30.0
     elif num_projects == 2:
@@ -49,7 +49,7 @@ def calculate_career_readiness(
     score_project = round(min(score_project, 100.0), 2)
 
     # 4. Interview Readiness (15% weight)
-    score_interview = 60.0
+    score_interview = 0.0
     if len(skill_gap.strong) >= 3:
         score_interview += 20.0
     elif len(skill_gap.strong) >= 1:
@@ -81,7 +81,7 @@ def calculate_career_readiness(
         elif "junior" in exp_level:
             score_exp = 80.0
         else:
-            score_exp = 70.0
+            score_exp = 0.0
 
     work_exps = resume_analysis.get("work_experience") or []
     if work_exps:
@@ -107,7 +107,7 @@ def calculate_career_readiness(
     if score_resume_quality >= 75:
         strengths.append("High ATS structure and resume readability score")
     if not strengths:
-        strengths.append("Solid technical foundation with high potential for targeted role upskilling")
+        strengths.append("Complete resume analysis and ATS scoring to establish evidence-based strengths")
 
     # Areas to improve
     areas_to_improve = []
