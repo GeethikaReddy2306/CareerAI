@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from app.services import job_analysis_service
+
 
 def test_job_analysis_success(client: TestClient, auth_headers: dict[str, str], sample_pdf_bytes: bytes):
     # Upload resume
@@ -74,4 +76,35 @@ def test_job_analysis_unauthorized_resume_fails(
         headers=other_user_auth_headers,
     )
     assert response.status_code == 404
+
+
+def test_skill_classification_is_a_disjoint_partition(monkeypatch):
+    extracted = job_analysis_service.AIJobExtractionSchema(
+        required_skills=["Python", "FastAPI", "Docker", "AWS"],
+        important_keywords=["Python", "FastAPI", "Docker", "AWS"],
+        interview_topics=["Python"],
+        recommendations=[],
+    )
+    monkeypatch.setattr(job_analysis_service, "call_structured_ai", lambda **_: extracted)
+    profile = {
+        "skills": ["Python", "FastAPI", "Docker"],
+        "projects": [{"name": "API", "description": "Built a Python FastAPI service", "technologies": ["Python", "FastAPI"]}],
+        "work_experience": [{"company": "Acme", "role": "Engineer", "responsibilities": ["Maintained FastAPI endpoints"]}],
+        "experience_level": "Mid-level",
+    }
+
+    result = job_analysis_service.analyze_job_description(
+        profile, "Backend role requiring Python, FastAPI, Docker, and AWS."
+    )
+
+    categories = [
+        set(result["matched_skills"]),
+        set(result["partial_skills"]),
+        set(result["missing_skills"]),
+    ]
+    assert not categories[0].intersection(categories[1])
+    assert not categories[0].intersection(categories[2])
+    assert not categories[1].intersection(categories[2])
+    assert "Docker" in result["partial_skills"]  # listed but not evidenced in project/work material
+    assert "AWS" in result["missing_skills"]
 

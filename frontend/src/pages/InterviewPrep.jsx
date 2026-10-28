@@ -18,6 +18,7 @@ function PrepInner({ resumes, selectedId, select }) {
   const [role, setRole] = useState('Backend Developer')
   const [jd, setJd] = useState('')
   const [questions, setQuestions] = useState([])
+  const [generationNotice, setGenerationNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -25,6 +26,7 @@ function PrepInner({ resumes, selectedId, select }) {
     e.preventDefault()
     setBusy(true)
     setError('')
+    setGenerationNotice('')
     try {
       const payload = {
         resume_id: selectedId,
@@ -34,6 +36,7 @@ function PrepInner({ resumes, selectedId, select }) {
       if (jd.trim().length >= 10) payload.job_description = jd.trim()
       const { data } = await careerApi.createQuestions(payload)
       setQuestions(data.questions || [])
+      setGenerationNotice(data.generation_notice || '')
       markProgress(user.id, 'interview')
     } catch (err) {
       setError(apiErrorMessage(err))
@@ -48,6 +51,7 @@ function PrepInner({ resumes, selectedId, select }) {
     try {
       const { data } = await careerApi.getQuestions(selectedId)
       setQuestions(data.questions || [])
+      setGenerationNotice('')
     } catch (err) {
       setError(apiErrorMessage(err, 'No saved questions yet.'))
     } finally {
@@ -86,8 +90,10 @@ function PrepInner({ resumes, selectedId, select }) {
         </div>
       </form>
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
+      {generationNotice ? <div className="mb-4"><Alert>{generationNotice}</Alert></div> : null}
       {busy ? <Spinner /> : null}
       <div className="space-y-4">
+        {!busy && questions.length ? <p className="text-sm text-white/55">Showing {questions.length} unique question{questions.length === 1 ? '' : 's'}.</p> : null}
         {!busy && !questions.length ? <Card className="p-5"><p className="text-sm text-white/55">Choose a resume and target role, then generate questions. Saved questions will appear here after generation.</p></Card> : null}
         {Object.entries(grouped).map(([cat, items]) => (
           <Card key={cat} className="p-5">

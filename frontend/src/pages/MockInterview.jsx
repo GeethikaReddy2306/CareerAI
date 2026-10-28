@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiErrorMessage, careerApi } from '../api/client.js'
 import { ResumeGate, ResumePicker } from '../components/ResumePicker.jsx'
 import { Alert, Button, Card, Chip, Field, inputClass, PageHeader, ScoreBadge, Spinner } from '../components/ui.jsx'
@@ -18,6 +18,7 @@ function MockInner({ resumes, selectedId, select }) {
   const [role, setRole] = useState('Backend Developer')
   const [questions, setQuestions] = useState([])
   const [sessionId, setSessionId] = useState(null)
+  const [generationNotice, setGenerationNotice] = useState('')
   const [index, setIndex] = useState(0)
   const [answer, setAnswer] = useState('')
   const [evals, setEvals] = useState([])
@@ -25,24 +26,68 @@ function MockInner({ resumes, selectedId, select }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [started, setStarted] = useState(false)
+  const restoredKey = useRef('')
+  const storageKey = selectedId && user?.id ? `careerai_mock_session_${user.id}_${selectedId}` : ''
+
+  useEffect(() => {
+    if (!storageKey || restoredKey.current === storageKey) return
+    restoredKey.current = storageKey
+    const savedSessionId = sessionStorage.getItem(storageKey)
+    if (!savedSessionId) return
+    let cancelled = false
+
+    async function restore() {
+      setBusy(true)
+      try {
+        const { data } = await careerApi.getInterviewSession(savedSessionId)
+        if (cancelled || data.resume_id !== selectedId || !data.questions?.length) return
+        const savedAnswers = data.answers || []
+        const answeredQuestions = new Set(savedAnswers.map((item) => item.question))
+        const nextIndex = data.questions.findIndex((item) => !answeredQuestions.has(item.question))
+        setRole(data.target_role)
+        setQuestions(data.questions)
+        setSessionId(data.id)
+        setEvals(savedAnswers.filter((item) => item.evaluation).map((item) => ({ ...item.evaluation, question: item.question })))
+        setIndex(nextIndex === -1 ? data.questions.length : nextIndex)
+        setCurrentEval(null)
+        setAnswer('')
+        setStarted(true)
+      } catch {
+        sessionStorage.removeItem(storageKey)
+      } finally {
+        if (!cancelled) setBusy(false)
+      }
+    }
+    restore()
+    return () => { cancelled = true }
+  }, [selectedId, storageKey])
 
   async function start(e) {
     e.preventDefault()
     setBusy(true)
     setError('')
+    setGenerationNotice('')
     try {
       const { data } = await careerApi.createQuestions({
         resume_id: selectedId,
         target_role: role,
         question_count: 6,
       })
-      setQuestions(data.questions || [])
-      setSessionId(data.session_id || null)
+      const generatedQuestions = data.questions || []
+      if (!generatedQuestions.length || !data.session_id) {
+        setStarted(false)
+        setError(data.generation_notice || 'No valid interview questions could be generated for this profile.')
+        return
+      }
+      setQuestions(generatedQuestions)
+      setSessionId(data.session_id)
+      setGenerationNotice(data.generation_notice || '')
       setIndex(0)
       setEvals([])
       setCurrentEval(null)
       setAnswer('')
       setStarted(true)
+      sessionStorage.setItem(storageKey, data.session_id)
       markProgress(user.id, 'interview')
     } catch (err) {
       setError(apiErrorMessage(err))
@@ -107,6 +152,7 @@ function MockInner({ resumes, selectedId, select }) {
         </form>
       ) : null}
       {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
+      {generationNotice ? <div className="mt-4"><Alert>{generationNotice}</Alert></div> : null}
       {busy && !q ? <Spinner /> : null}
 
       {started && q && !finished ? (
@@ -144,6 +190,12 @@ function MockInner({ resumes, selectedId, select }) {
                   <p className="text-xs uppercase text-white/40">Improve</p>
                   <ul className="mt-1 list-disc pl-5 text-sm">{currentEval.improvements?.map((s) => <li key={s}>{s}</li>)}</ul>
                 </div>
+                {currentEval.missing_concepts?.length ? (
+                  <div>
+                    <p className="text-xs uppercase text-white/40">Missing concepts</p>
+                    <ul className="mt-1 list-disc pl-5 text-sm">{currentEval.missing_concepts.map((s) => <li key={s}>{s}</li>)}</ul>
+                  </div>
+                ) : null}
               </div>
               {index < questions.length - 1 ? (
                 <Button onClick={nextQuestion}>Next question</Button>
@@ -172,7 +224,14 @@ function MockInner({ resumes, selectedId, select }) {
               </div>
             ))}
           </div>
-          <Button className="mt-4" variant="ghost" onClick={() => { setStarted(false); setQuestions([]); setEvals([]); setSessionId(null) }}>
+          <Button className="mt-4" variant="ghost" onClick={() => {
+            if (storageKey) sessionStorage.removeItem(storageKey)
+            setStarted(false)
+            setQuestions([])
+            setEvals([])
+            setSessionId(null)
+            setGenerationNotice('')
+          }}>
             New session
           </Button>
         </Card>

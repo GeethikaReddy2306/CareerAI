@@ -1,10 +1,11 @@
+from dataclasses import dataclass
 from typing import Any, Iterable
 import re
 from difflib import SequenceMatcher
 from pydantic import BaseModel, Field
 from app.schemas.interview import InterviewQuestionItem
 from app.schemas.skill_gap import SkillGapResponse
-from app.services.ai_service import call_structured_ai
+from app.services.ai_service import AIStatus, call_structured_ai, try_structured_ai
 
 CATEGORIES = [
     "Technical",
@@ -22,31 +23,91 @@ def normalize_question(question: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", (question or "").casefold()))
 
 
-def is_duplicate_question(question: str, existing: Iterable[str], threshold: float = 0.86) -> bool:
+def _question_value(value: Any) -> tuple[str, str | None]:
+    if isinstance(value, InterviewQuestionItem):
+        return value.question, value.category
+    if isinstance(value, dict):
+        return str(value.get("question", "")), value.get("category")
+    return str(value or ""), None
+
+
+def is_duplicate_question(
+    question: str,
+    existing: Iterable[Any],
+    threshold: float = 0.93,
+    category: str | None = None,
+) -> bool:
+    """Reject exact duplicates everywhere and near duplicates within a category.
+
+    Category-aware similarity avoids rejecting a valid behavioral and technical
+    question merely because both use broad words such as "project" or "role".
+    """
     candidate = normalize_question(question)
     if not candidate:
         return True
     for previous in existing:
-        normal = normalize_question(previous)
-        if candidate == normal or SequenceMatcher(None, candidate, normal).ratio() >= threshold:
+        previous_question, previous_category = _question_value(previous)
+        normal = normalize_question(previous_question)
+        if candidate == normal:
+            return True
+        if category and previous_category and category != previous_category:
+            continue
+        if SequenceMatcher(None, candidate, normal).ratio() >= threshold:
             return True
     return False
 
 
-def unique_questions(candidates: Iterable[InterviewQuestionItem], excluded: Iterable[str], limit: int) -> list[InterviewQuestionItem]:
+def unique_questions(
+    candidates: Iterable[InterviewQuestionItem], excluded: Iterable[Any], limit: int
+) -> list[InterviewQuestionItem]:
     selected: list[InterviewQuestionItem] = []
     seen = list(excluded)
     for candidate in candidates:
-        if not is_duplicate_question(candidate.question, seen):
+        if not is_duplicate_question(candidate.question, seen, category=candidate.category):
             selected.append(candidate)
-            seen.append(candidate.question)
+            seen.append(candidate)
             if len(selected) == limit:
                 break
     return selected
 
 
+def select_questions_with_category_coverage(
+    candidates: Iterable[InterviewQuestionItem], excluded: Iterable[Any], limit: int
+) -> list[InterviewQuestionItem]:
+    """Prefer one valid question per category before filling the remaining slots."""
+    candidate_list = list(candidates)
+    selected: list[InterviewQuestionItem] = []
+    seen = list(excluded)
+    for category in CATEGORIES[:min(limit, len(CATEGORIES))]:
+        for candidate in candidate_list:
+            if candidate.category != category:
+                continue
+            if not is_duplicate_question(candidate.question, seen, category=candidate.category):
+                selected.append(candidate)
+                seen.append(candidate)
+                break
+    for candidate in candidate_list:
+        if len(selected) >= limit:
+            break
+        if not is_duplicate_question(candidate.question, seen, category=candidate.category):
+            selected.append(candidate)
+            seen.append(candidate)
+    return selected
+
+
 class AIInterviewQuestionsSchema(BaseModel):
     questions: list[InterviewQuestionItem] = Field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class InterviewGenerationResult:
+    questions: list[InterviewQuestionItem]
+    generation_mode: str
+    generation_notice: str | None = None
+
+
+def _as_text(value: Any) -> str:
+    return str(value).strip() if value else ""
 
 
 def _heuristic_interview_questions(
@@ -55,125 +116,104 @@ def _heuristic_interview_questions(
     skill_gap: SkillGapResponse,
     question_count: int,
 ) -> AIInterviewQuestionsSchema:
-    """Deterministic fallback question generator covering all 7 categories personalized to the candidate."""
-    primary_skills = resume_analysis.get("skills") or ["Python", "FastAPI", "SQL"]
-    primary_skill = primary_skills[0] if primary_skills else "Python"
-    secondary_skill = primary_skills[1] if len(primary_skills) > 1 else "FastAPI"
-
-    projects = resume_analysis.get("projects") or []
-    project_name = projects[0].get("name", "a project you can discuss") if projects else "a project you can discuss"
-
-    missing_skill = skill_gap.missing[0] if skill_gap.missing else "Docker"
-    weak_skill = skill_gap.weak[0] if skill_gap.weak else "System Design"
-
-    curated: list[InterviewQuestionItem] = [
-        # 1. Technical
-        InterviewQuestionItem(
-            question=f"How does concurrency and async/await work under the hood in {primary_skill}?",
-            category="Technical",
-            difficulty="Medium",
-            topic=primary_skill,
-        ),
-        InterviewQuestionItem(
-            question=f"Explain how dependency injection and database session management are handled in {secondary_skill}.",
-            category="Technical",
-            difficulty="Medium",
-            topic=secondary_skill,
-        ),
-        # 2. Resume Based
-        InterviewQuestionItem(
-            question=f"Your resume highlights experience with {', '.join(primary_skills[:3])}. Can you walk through how you structured the data layer for performance?",
-            category="Resume Based",
-            difficulty="Medium",
-            topic="Resume Architecture",
-        ),
-        InterviewQuestionItem(
-            question=f"Which example on your resume best demonstrates {primary_skill}, and what decision or trade-off did you make?",
-            category="Resume Based",
-            difficulty="Hard",
-            topic="Performance Optimization",
-        ),
-        # 3. Project Based
-        InterviewQuestionItem(
-            question=f"Walk through the architecture of '{project_name}'. What was the most important technical decision and why?",
-            category="Project Based",
-            difficulty="Medium",
-            topic=project_name,
-        ),
-        InterviewQuestionItem(
-            question=f"If traffic for '{project_name}' increased by 50x overnight, where would the primary bottlenecks occur and how would you scale it?",
-            category="Project Based",
-            difficulty="Hard",
-            topic="Project Scalability",
-        ),
-        # 4. Role Specific
-        InterviewQuestionItem(
-            question=f"As a {target_role}, how do you ensure API idempotency and handle distributed transactions across services?",
-            category="Role Specific",
-            difficulty="Hard",
-            topic=f"{target_role} Architecture",
-        ),
-        InterviewQuestionItem(
-            question=f"What strategies do you use for error handling, rate limiting, and defensive validation in modern {target_role} environments?",
-            category="Role Specific",
-            difficulty="Medium",
-            topic="Defensive Engineering",
-        ),
-        # 5. Skill Gap Based
-        InterviewQuestionItem(
-            question=f"We noticed that {missing_skill} is essential for this role. How have you approached containerizing or deploying applications in the past, and how quickly can you ramp up on {missing_skill}?",
-            category="Skill Gap Based",
-            difficulty="Medium",
-            topic=missing_skill,
-        ),
-        InterviewQuestionItem(
-            question=f"How would you approach designing a caching layer using {weak_skill} to mitigate database bottlenecks?",
-            category="Skill Gap Based",
-            difficulty="Medium",
-            topic=weak_skill,
-        ),
-        # 6. Behavioral
-        InterviewQuestionItem(
-            question="Describe a situation where you had a disagreement with a peer or lead on a technical approach. How did you resolve it?",
-            category="Behavioral",
-            difficulty="Medium",
-            topic="Collaboration & Conflict Resolution",
-        ),
-        InterviewQuestionItem(
-            question="Tell me about a critical production bug or outage you were involved with. What was your triage process and how did you prevent recurrence?",
-            category="Behavioral",
-            difficulty="Medium",
-            topic="Production Incident Response",
-        ),
-        # 7. HR
-        InterviewQuestionItem(
-            question="Can you give a brief walkthrough of your background, key strengths, and what drives you as an engineer?",
-            category="HR",
-            difficulty="Easy",
-            topic="Introduction & Career Story",
-        ),
-        InterviewQuestionItem(
-            question=f"What specific aspects of working as a {target_role} align with your long-term career goals?",
-            category="HR",
-            difficulty="Easy",
-            topic="Role Motivation",
-        ),
+    """Build varied questions from the candidate's actual profile, not canned data."""
+    skills = [_as_text(skill) for skill in (resume_analysis.get("skills") or []) if _as_text(skill)]
+    projects = [
+        _as_text(project.get("name") if isinstance(project, dict) else getattr(project, "name", ""))
+        for project in (resume_analysis.get("projects") or [])
     ]
+    projects = [project for project in projects if project]
+    gaps = [*_as_text_list(skill_gap.missing), *_as_text_list(skill_gap.weak)]
+    role_topic = target_role.strip() or "the target role"
+    technical_topics = skills or [role_topic]
+    project_topics = projects or [role_topic]
+    gap_topics = gaps or [role_topic]
+    desired = max(question_count * 3, 28)
+    questions: list[InterviewQuestionItem] = []
 
-    # If user requested more questions, cycle or supplement with deeper questions
-    while len(curated) < question_count:
-        idx = len(curated) + 1
-        cat = CATEGORIES[idx % len(CATEGORIES)]
-        curated.append(
-            InterviewQuestionItem(
-                question=f"Advanced {target_role} interview scenario #{idx}: How do you approach testing, linting, and maintaining zero-downtime releases?",
-                category=cat,
-                difficulty="Medium" if idx % 2 == 0 else "Hard",
-                topic=f"{target_role} Best Practices",
-            )
+    templates: dict[str, tuple[list[str], list[str], str]] = {
+        "Technical": (
+            [
+                "Explain the design choices you would make when using {topic} in a {role} system.",
+                "How would you diagnose a production failure involving {topic}, from first signal through verification?",
+                "Which tests would give you confidence that a {topic} implementation is reliable and maintainable?",
+                "Describe a trade-off you would evaluate before introducing {topic} into an existing service.",
+            ], technical_topics, "Medium",
+        ),
+        "Resume Based": (
+            [
+                "Where in your resume did you apply {topic}, and what measurable outcome did you own?",
+                "Walk us through a decision involving {topic} on your resume, including alternatives you rejected.",
+                "What would you improve if you revisited the resume experience that used {topic}?",
+                "How did you validate that your work with {topic} solved the problem you described on your resume?",
+            ], technical_topics, "Medium",
+        ),
+        "Project Based": (
+            [
+                "Walk through the architecture of {topic}; what was the highest-impact technical decision?",
+                "If usage of {topic} grew tenfold, what would you measure first and how would you scale it?",
+                "What failure mode in {topic} was hardest to anticipate, and how did you address it?",
+                "How did you divide, test, and deliver work for {topic} with other contributors?",
+            ], project_topics, "Hard",
+        ),
+        "Role Specific": (
+            [
+                "As a {role}, how would you turn an ambiguous requirement into a safe technical delivery plan?",
+                "What signals would tell you that a {role} solution is ready to release and operate?",
+                "Describe how you would balance speed, quality, and risk when prioritizing work as a {role}.",
+                "How would you communicate a technical trade-off to non-specialist stakeholders in a {role} role?",
+            ], [role_topic], "Medium",
+        ),
+        "Skill Gap Based": (
+            [
+                "What is your plan to close the gap in {topic}, and how would you prove practical competence?",
+                "How would you apply {topic} to a realistic problem for this {role} position?",
+                "Which fundamentals of {topic} would you learn first before taking ownership in production?",
+                "Describe a small project or experiment that would demonstrate readiness in {topic}.",
+            ], gap_topics, "Medium",
+        ),
+        "Behavioral": (
+            [
+                "Tell me about a time you had to resolve a disagreement about a technical approach. What was the result?",
+                "Describe a difficult delivery or incident. How did you organize the response and prevent recurrence?",
+                "Give an example of feedback that changed how you work with a team.",
+                "Tell me about a time you had to explain a complex decision clearly under time pressure.",
+            ], [role_topic], "Medium",
+        ),
+        "HR": (
+            [
+                "How does this {role} opportunity connect to the direction you want your career to take?",
+                "Which strengths from your background would you bring first to a {role} team?",
+                "What kind of team environment helps you do your best work as a {role}?",
+                "What would success in your first few months as a {role} look like to you?",
+            ], [role_topic], "Easy",
+        ),
+    }
+    for index in range(desired):
+        category = CATEGORIES[index % len(CATEGORIES)]
+        variants, topics, difficulty = templates[category]
+        topic = topics[(index // len(CATEGORIES)) % len(topics)]
+        question = variants[(index // (len(CATEGORIES) * max(len(topics), 1))) % len(variants)].format(
+            topic=topic, role=role_topic
         )
+        questions.append(InterviewQuestionItem(question=question, category=category, difficulty=difficulty, topic=topic))
+    return AIInterviewQuestionsSchema(questions=questions)
 
-    return AIInterviewQuestionsSchema(questions=curated[:question_count])
+
+def _as_text_list(values: Iterable[Any]) -> list[str]:
+    return [_as_text(value) for value in values if _as_text(value)]
+
+
+def _generation_notice(status: AIStatus) -> str | None:
+    messages = {
+        "not_configured": "AI provider is not configured; profile-based questions were generated instead.",
+        "configuration_error": "AI provider configuration was rejected; profile-based questions were generated instead.",
+        "timeout": "AI generation timed out; profile-based questions were generated instead.",
+        "rate_limited": "AI generation is temporarily rate-limited; profile-based questions were generated instead.",
+        "invalid_output": "AI returned invalid structured output; profile-based questions were generated instead.",
+        "provider_error": "AI provider was unavailable; profile-based questions were generated instead.",
+    }
+    return messages.get(status)
 
 
 def generate_interview_questions(
@@ -182,12 +222,13 @@ def generate_interview_questions(
     skill_gap: SkillGapResponse,
     job_description: str | None = None,
     question_count: int = 15,
-    excluded_questions: list[str] | None = None,
-) -> list[InterviewQuestionItem]:
+    excluded_questions: list[Any] | None = None,
+    previous_questions: list[Any] | None = None,
+) -> InterviewGenerationResult:
     """Generate categorized, personalized interview questions."""
     def fallback():
         return _heuristic_interview_questions(
-            resume_analysis, target_role, skill_gap, question_count
+            resume_analysis, target_role, skill_gap, max(question_count * 3, 28)
         )
 
     skills_text = ", ".join(resume_analysis.get("skills") or [])
@@ -196,8 +237,9 @@ def generate_interview_questions(
     )
     jd_context = f"\nTarget Job Description:\n{job_description}" if job_description else ""
 
+    candidate_count = min(50, max(question_count * 3, 21))
     prompt = (
-        f"Generate {question_count} personalized interview questions for a candidate applying for: '{target_role}'.\n"
+        f"Generate {candidate_count} candidate interview questions for a candidate applying for: '{target_role}'.\n"
         f"Candidate Resume Skills: {skills_text}\n"
         f"Candidate Projects: {projects_text}\n"
         f"Candidate Missing Skills / Gaps: {', '.join(skill_gap.missing)}\n"
@@ -220,30 +262,46 @@ def generate_interview_questions(
         "personalized interview questions that test real engineering ability rather than memorized trivia."
     )
 
-    ai_result = call_structured_ai(
-        prompt=prompt,
-        system_prompt=system_prompt,
-        schema_cls=AIInterviewQuestionsSchema,
-        fallback_factory=fallback,
-    )
+    hard_exclusions = list(excluded_questions or [])
+    soft_exclusions = list(previous_questions or [])
+    ai_questions: list[InterviewQuestionItem] = []
+    ai_status: AIStatus = "success"
 
-    questions = ai_result.questions if ai_result.questions else fallback().questions
+    # Ask for surplus candidates. A second attempt is only made when the first
+    # valid AI batch cannot fill the request after duplicate filtering.
+    for attempt in range(2):
+        attempt_prompt = prompt
+        if attempt:
+            attempt_prompt += "\nReturn materially different questions and avoid repeating these themes:\n" + "\n".join(
+                item.question for item in ai_questions[-20:]
+            )
+        result, ai_status = try_structured_ai(
+            prompt=attempt_prompt,
+            system_prompt=system_prompt,
+            schema_cls=AIInterviewQuestionsSchema,
+        )
+        if result:
+            ai_questions.extend(result.questions)
+            if len(select_questions_with_category_coverage(ai_questions, [*hard_exclusions, *soft_exclusions], question_count)) >= question_count:
+                break
+        else:
+            break
 
-    # Ensure all 7 categories exist; if any category is missing in AI output, fill from fallback
-    existing_cats = {q.category for q in questions}
     fallback_questions = fallback().questions
-    for fq in fallback_questions:
-        if fq.category not in existing_cats and len(questions) < question_count:
-            questions.append(fq)
-            existing_cats.add(fq.category)
+    candidates = [*ai_questions, *fallback_questions]
+    # Prefer questions unseen in prior sessions, but never make old history
+    # turn a valid request into a failure. Current-session exclusions stay hard.
+    selected = select_questions_with_category_coverage(candidates, [*hard_exclusions, *soft_exclusions], question_count)
+    if len(selected) < question_count:
+        selected = select_questions_with_category_coverage(candidates, hard_exclusions, question_count)
 
-    unique = unique_questions(questions, excluded_questions or [], question_count)
-    if len(unique) < question_count:
-        # Deterministic fallback may be more varied than malformed AI output.
-        unique = unique_questions(fallback().questions, excluded_questions or [], question_count)
-    if len(unique) < question_count:
-        raise ValueError("Could not create enough unique interview questions for this session. Try a different role or request fewer questions.")
-    return unique
+    generation_mode = "ai" if ai_questions else "profile_based"
+    notice = _generation_notice(ai_status) if not ai_questions else None
+    return InterviewGenerationResult(
+        questions=selected,
+        generation_mode=generation_mode,
+        generation_notice=notice,
+    )
 
 
 class AIAnswerEvaluationSchema(BaseModel):
@@ -252,6 +310,7 @@ class AIAnswerEvaluationSchema(BaseModel):
     feedback: str = Field(default="Provide a more structured answer with a concrete example.")
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)
+    missing_concepts: list[str] = Field(default_factory=list)
 
 
 def _heuristic_evaluate_answer(question: str, answer: str, topic: str, category: str) -> AIAnswerEvaluationSchema:
@@ -284,6 +343,7 @@ def _heuristic_evaluate_answer(question: str, answer: str, topic: str, category:
 
     strengths: list[str] = []
     improvements: list[str] = []
+    missing_concepts: list[str] = []
     if word_count >= 40:
         strengths.append("Answer has enough depth to be evaluated.")
     else:
@@ -292,6 +352,7 @@ def _heuristic_evaluate_answer(question: str, answer: str, topic: str, category:
         strengths.append(f"Touched on relevant terms for {topic}.")
     else:
         improvements.append(f"Name specific concepts related to {topic}.")
+        missing_concepts.append(str(topic))
     if "example" not in text.lower():
         improvements.append("Use the STAR method (Situation, Task, Action, Result) where possible.")
     if not strengths:
@@ -307,6 +368,7 @@ def _heuristic_evaluate_answer(question: str, answer: str, topic: str, category:
         feedback=feedback,
         strengths=strengths[:4],
         improvements=improvements[:4],
+        missing_concepts=missing_concepts[:4],
     )
 
 
@@ -327,7 +389,8 @@ def evaluate_mock_answer(
         f"Question: {question}\n"
         f"Candidate answer: {answer}\n\n"
         "Return JSON with: score (0-100 integer), verdict (Strong|Adequate|Needs Work), "
-        "feedback (2-4 sentences), strengths (array of short strings), improvements (array of short strings)."
+        "feedback (2-4 sentences), strengths (array of short strings), improvements (array of short strings), "
+        "and missing_concepts (array of concepts the answer should address)."
     )
     return call_structured_ai(
         prompt=prompt,

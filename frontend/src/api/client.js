@@ -68,5 +68,6 @@ export const careerApi = {
   updateRoadmapProgress: (roadmapId, completed_skills) => api.patch(`/api/career/roadmap/${roadmapId}/progress`, { completed_skills }),
   createQuestions: (payload) => api.post('/api/interview/questions', payload),
   getQuestions: (resumeId) => api.get('/api/interview/questions', { params: { resume_id: resumeId } }),
+  getInterviewSession: (sessionId) => api.get(`/api/interview/sessions/${sessionId}`),
   evaluateAnswer: (payload) => api.post('/api/interview/evaluate', payload),
 }

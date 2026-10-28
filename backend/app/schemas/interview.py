@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -26,6 +28,10 @@ class InterviewQuestionsResponse(BaseModel):
         default_factory=list, description="Personalized questions categorized across 7 core dimensions"
     )
     session_id: str | None = None
+    requested_count: int | None = Field(default=None, ge=0)
+    returned_count: int = Field(default=0, ge=0, description="Number of validated unique questions returned")
+    generation_mode: str = Field(default="ai", description="ai or profile_based")
+    generation_notice: str | None = Field(default=None, description="Safe explanation when AI generation was unavailable")
 
 
 class MockAnswerRequest(BaseModel):
@@ -43,4 +49,13 @@ class MockAnswerEvaluation(BaseModel):
     feedback: str = Field(..., description="Coach-style feedback on the answer")
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)
+    missing_concepts: list[str] = Field(default_factory=list)
+
+
+class InterviewSessionResponse(BaseModel):
+    id: str
+    resume_id: str
+    target_role: str
+    questions: list[InterviewQuestionItem] = Field(default_factory=list)
+    answers: list[dict[str, Any]] = Field(default_factory=list)
 

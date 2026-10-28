@@ -62,39 +62,49 @@ function JobInner({ resumes, selectedId, select }) {
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
       {busy ? <Spinner /> : null}
       {result ? (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="p-5">
             <ScoreBadge score={result.match_score} />
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-lg">Matched</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(result.matched_skills || []).map((s) => <Chip key={s} tone="mint">{s}</Chip>)}
+              {(result.matched_skills || []).length
+                ? result.matched_skills.map((s) => <Chip key={s} tone="mint">{s}</Chip>)
+                : <p className="text-sm text-white/55">No required skills were matched from the available resume data.</p>}
             </div>
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-lg">Missing</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(result.missing_skills || []).map((s) => <Chip key={s} tone="rose">{s}</Chip>)}
+              {(result.missing_skills || []).length
+                ? result.missing_skills.map((s) => <Chip key={s} tone="rose">{s}</Chip>)
+                : <p className="text-sm text-white/55">No missing required skills were identified.</p>}
             </div>
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-lg">Partial</h2>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(result.partial_skills || []).map((s) => <Chip key={s} tone="gold">{s}</Chip>)}
+              {(result.partial_skills || []).length
+                ? result.partial_skills.map((s) => <Chip key={s} tone="gold">{s}</Chip>)
+                : <p className="text-sm text-white/55">No partially matched skills found.</p>}
             </div>
           </Card>
-          <Card className="p-5 lg:col-span-2">
+          <Card className="p-5 md:col-span-2 xl:col-span-3">
             <h2 className="font-display text-lg">Interview topics</h2>
-            <ul className="mt-2 list-disc pl-5 text-sm text-white/70">
-              {(result.interview_topics || []).map((s) => <li key={s}>{s}</li>)}
-            </ul>
+            {(result.interview_topics || []).length ? (
+              <ul className="mt-2 list-disc pl-5 text-sm text-white/70">
+                {result.interview_topics.map((s) => <li key={s}>{s}</li>)}
+              </ul>
+            ) : <p className="mt-2 text-sm text-white/55">Add more job-description detail to generate focused interview topics.</p>}
           </Card>
-          <Card className="p-5 lg:col-span-3">
+          <Card className="p-5 md:col-span-2 xl:col-span-4">
             <h2 className="font-display text-lg">Recommendations</h2>
-            <ul className="mt-2 list-disc pl-5 text-sm text-white/70">
-              {(result.recommendations || []).map((s) => <li key={s}>{s}</li>)}
-            </ul>
+            {(result.recommendations || []).length ? (
+              <ul className="mt-2 list-disc pl-5 text-sm text-white/70">
+                {result.recommendations.map((s) => <li key={s}>{s}</li>)}
+              </ul>
+            ) : <p className="mt-2 text-sm text-white/55">Add a fuller job description or resume analysis to receive recommendations.</p>}
           </Card>
         </div>
       ) : null}

@@ -59,103 +59,6 @@ function CategoryCard({ category }) {
   )
 }
 
-// ─── AI Review section ───────────────────────────────────────────────────────
-
-function AIReview({ review }) {
-  if (!review) return null
-
-  const isUnavailable = review.status === 'unavailable'
-
-  if (isUnavailable) {
-    return (
-      <Card className="p-5 lg:col-span-3">
-        <h2 className="font-display text-xl">AI Review</h2>
-        <p className="mt-3 text-sm text-white/50">{review.overall_feedback}</p>
-        <p className="mt-2 text-xs text-gold">This is not presented as a successful AI review. You can retry the analysis after checking the backend AI configuration.</p>
-      </Card>
-    )
-  }
-
-  return (
-    <Card className="p-5 lg:col-span-3">
-      <h2 className="font-display text-xl">AI Review</h2>
-
-      {/* Clarity / Impact scores */}
-      {(review.clarity_score != null || review.impact_score != null) && (
-        <div className="mt-3 flex flex-wrap gap-3">
-          {review.clarity_score != null && (
-            <div className="rounded-xl border border-line px-3 py-2">
-              <p className="text-xs uppercase tracking-wide text-white/40">Clarity</p>
-              <p className="font-display text-lg">{review.clarity_score}</p>
-            </div>
-          )}
-          {review.impact_score != null && (
-            <div className="rounded-xl border border-line px-3 py-2">
-              <p className="text-xs uppercase tracking-wide text-white/40">Impact</p>
-              <p className="font-display text-lg">{review.impact_score}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Overall feedback */}
-      {review.overall_feedback && (
-        <p className="mt-4 text-sm text-white/70">{review.overall_feedback}</p>
-      )}
-
-      {/* Weak bullets */}
-      {review.weak_bullets?.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-white/40">
-            Weak bullets
-          </h3>
-          <ul className="mt-2 space-y-3">
-            {review.weak_bullets.map((b, i) => (
-              <li key={i} className="rounded-lg border border-line p-3 text-sm">
-                <p className="text-white/50 line-through">{b.line}</p>
-                <p className="mt-1 text-white/70 italic">{b.why_weak}</p>
-                <p className="mt-1 text-emerald-400">→ {b.improved_version}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Grammar issues */}
-      {review.grammar_issues?.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-white/40">
-            Grammar &amp; spelling
-          </h3>
-          <ul className="mt-2 space-y-3">
-            {review.grammar_issues.map((g, i) => (
-              <li key={i} className="rounded-lg border border-line p-3 text-sm">
-                <p className="text-white/50">{g.line}</p>
-                <p className="mt-1 text-rose-400">{g.issue}</p>
-                <p className="mt-1 text-emerald-400">Fix: {g.fix}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Missing impact keywords */}
-      {review.missing_impact_keywords?.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-white/40">
-            Missing impact keywords
-          </h3>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {review.missing_impact_keywords.map((kw) => (
-              <Chip key={kw} tone="rose">{kw}</Chip>
-            ))}
-          </div>
-        </div>
-      )}
-    </Card>
-  )
-}
-
 // ─── Main inner component ────────────────────────────────────────────────────
 
 function AtsInner({ resumes, selectedId, select }) {
@@ -187,7 +90,7 @@ function AtsInner({ resumes, selectedId, select }) {
       <PageHeader
         eyebrow="ATS"
         title="ATS resume score"
-        description="A deterministic compatibility estimate with documented weighted components. AI feedback is clearly labelled when available."
+        description="A deterministic compatibility estimate with documented weighted components and actionable improvements."
         actions={
           <Button disabled={busy || !selectedId} onClick={run}>
             {busy ? 'Scoring…' : 'Generate ATS score'}
@@ -257,9 +160,6 @@ function AtsInner({ resumes, selectedId, select }) {
               {!result.improvements?.length ? <p className="text-sm text-white/50">No improvements were returned. Retry the analysis; no result is being inferred.</p> : null}
             </div>
           </Card>
-
-          {/* AI deep-review (optional — shown only when ai_review is present) */}
-          <AIReview review={result.ai_review} />
         </div>
       ) : null}
     </div>

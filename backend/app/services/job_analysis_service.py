@@ -78,7 +78,7 @@ def analyze_job_description(
     if not jd_skills:
         raise ValueError("No explicit, supported skill requirements could be extracted from this job description.")
 
-    candidate_skills = [normalize_skill(s) for s in (resume_analysis.get("skills") or [])]
+    candidate_skills = [normalize_skill(s) for s in (resume_analysis.get("skills") or []) if normalize_skill(s)]
     candidate_skills_lower = {s.lower(): s for s in candidate_skills}
 
     # Inspect candidate project and work experience context for evidence
@@ -98,10 +98,10 @@ def analyze_job_description(
         resp_str = " ".join(resps) if isinstance(resps, list) else str(resps)
         exp_lines.append(f"{company} {role} {resp_str}")
 
+    evidence_lines = [*proj_lines, *exp_lines]
     candidate_context = " ".join([
         resume_analysis.get("summary") or "",
-        " ".join(proj_lines),
-        " ".join(exp_lines),
+        *evidence_lines,
     ]).lower()
 
     matched_skills: list[str] = []
@@ -110,16 +110,35 @@ def analyze_job_description(
 
     for req_skill in jd_skills:
         req_lower = req_skill.lower()
-        if req_lower in candidate_skills_lower:
-            # Check how deeply candidate used it in projects/experience
-            mentions = 1 if skill_in_text(req_skill, candidate_context) else 0
-            is_advanced_in_jd = bool(re.search(rf"\b(advanced|expert|lead|architect|5\+\s*years)\b[^\n]*\b{re.escape(req_lower)}\b", lower_jd))
-            if is_advanced_in_jd and mentions < 2:
-                partial_skills.append(req_skill)
-            else:
-                matched_skills.append(req_skill)
+        listed_on_resume = req_lower in candidate_skills_lower
+        project_or_work_evidence = sum(
+            1 for line in evidence_lines if skill_in_text(req_skill, line)
+        )
+        is_advanced_in_jd = bool(
+            re.search(
+                rf"\b(advanced|expert(?:ise)?|lead|architect(?:ure)?|[5-9]\+\s*years)\b(?:\W+\w+){{0,5}}\W+{re.escape(req_lower)}\b",
+                lower_jd,
+            )
+        )
+
+        # A partial match requires concrete but incomplete evidence: either the
+        # skill appears in project/work material but is not listed as a core
+        # skill, or it is listed without enough evidence for a senior demand.
+        if listed_on_resume and project_or_work_evidence and (not is_advanced_in_jd or project_or_work_evidence >= 2):
+            matched_skills.append(req_skill)
+        elif listed_on_resume or project_or_work_evidence:
+            partial_skills.append(req_skill)
         else:
             missing_skills.append(req_skill)
+
+    # Keep the score, recommendations, and UI categories a true partition even
+    # if a noisy AI extraction returned duplicate or differently-cased skills.
+    matched_skills = list(dict.fromkeys(matched_skills))
+    partial_skills = [skill for skill in dict.fromkeys(partial_skills) if skill not in matched_skills]
+    missing_skills = [
+        skill for skill in dict.fromkeys(missing_skills)
+        if skill not in matched_skills and skill not in partial_skills
+    ]
 
     # 2. Meaningful multi-factor scoring calculation (0-100)
     total_req_count = max(len(jd_skills), 1)
