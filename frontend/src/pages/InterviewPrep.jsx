@@ -18,6 +18,7 @@ function PrepInner({ resumes, selectedId, select }) {
   const [role, setRole] = useState('Backend Developer')
   const [jd, setJd] = useState('')
   const [questions, setQuestions] = useState([])
+  const [generationMode, setGenerationMode] = useState('')
   const [generationNotice, setGenerationNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -26,7 +27,9 @@ function PrepInner({ resumes, selectedId, select }) {
     e.preventDefault()
     setBusy(true)
     setError('')
+    setQuestions([])
     setGenerationNotice('')
+    setGenerationMode('')
     try {
       const payload = {
         resume_id: selectedId,
@@ -36,6 +39,7 @@ function PrepInner({ resumes, selectedId, select }) {
       if (jd.trim().length >= 10) payload.job_description = jd.trim()
       const { data } = await careerApi.createQuestions(payload)
       setQuestions(data.questions || [])
+      setGenerationMode(data.generation_mode || 'ai')
       setGenerationNotice(data.generation_notice || '')
       markProgress(user.id, 'interview')
     } catch (err) {
@@ -49,9 +53,10 @@ function PrepInner({ resumes, selectedId, select }) {
     setBusy(true)
     setError('')
     try {
-      const { data } = await careerApi.getQuestions(selectedId)
+      const { data } = await careerApi.getQuestions(selectedId, { target_role: role })
       setQuestions(data.questions || [])
-      setGenerationNotice('')
+      setGenerationMode(data.generation_mode || 'saved')
+      setGenerationNotice(data.generation_notice || '')
     } catch (err) {
       setError(apiErrorMessage(err, 'No saved questions yet.'))
     } finally {
@@ -90,10 +95,21 @@ function PrepInner({ resumes, selectedId, select }) {
         </div>
       </form>
       {error ? <div className="mb-4"><Alert>{error}</Alert></div> : null}
-      {generationNotice ? <div className="mb-4"><Alert>{generationNotice}</Alert></div> : null}
+      {generationNotice ? (
+        <div className="mb-4">
+          <Alert type={generationMode === 'error' ? 'error' : 'success'}>{generationNotice}</Alert>
+        </div>
+      ) : null}
       {busy ? <Spinner /> : null}
       <div className="space-y-4">
-        {!busy && questions.length ? <p className="text-sm text-white/55">Showing {questions.length} unique question{questions.length === 1 ? '' : 's'}.</p> : null}
+        {!busy && questions.length ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-white/55">
+            <Chip tone={generationMode === 'demo' || generationMode === 'profile_based' ? 'gold' : 'mint'}>
+              {generationMode === 'demo' ? 'Demo mode — not AI-generated' : generationMode === 'profile_based' ? 'Profile-based fallback' : generationMode === 'saved' ? 'Saved questions' : generationMode === 'mixed' ? 'Mixed saved sources' : 'AI-generated'}
+            </Chip>
+            <span>Showing {questions.length} unique question{questions.length === 1 ? '' : 's'}.</span>
+          </div>
+        ) : null}
         {!busy && !questions.length ? <Card className="p-5"><p className="text-sm text-white/55">Choose a resume and target role, then generate questions. Saved questions will appear here after generation.</p></Card> : null}
         {Object.entries(grouped).map(([cat, items]) => (
           <Card key={cat} className="p-5">

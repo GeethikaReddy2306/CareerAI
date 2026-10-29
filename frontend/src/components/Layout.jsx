@@ -25,8 +25,7 @@ const links = [
   { to: '/app/readiness', label: 'Readiness', icon: Gauge },
   { to: '/app/roadmap', label: 'Roadmap', icon: Map },
   { to: '/app/explore', label: 'Career Paths', icon: Compass },
-  { to: '/app/interview', label: 'Interview Prep', icon: MessageSquareQuote },
-  { to: '/app/mock', label: 'Mock Interview', icon: Mic },
+  
 ]
 
 export default function Layout() {

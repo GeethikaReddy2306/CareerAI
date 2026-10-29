@@ -13,12 +13,29 @@ export default function MockInterview() {
   )
 }
 
+function isValidEvaluation(value) {
+  return Number.isFinite(value?.score)
+    && value.score >= 0
+    && value.score <= 100
+    && typeof value.verdict === 'string'
+    && value.verdict.length > 0
+    && typeof value.feedback === 'string'
+    && value.feedback.trim().length >= 20
+    && Array.isArray(value.strengths)
+    && Array.isArray(value.improvements)
+    && Array.isArray(value.missing_concepts)
+}
+
 function MockInner({ resumes, selectedId, select }) {
   const { user } = useAuth()
   const [role, setRole] = useState('Backend Developer')
+  const [jd, setJd] = useState('')
   const [questions, setQuestions] = useState([])
   const [sessionId, setSessionId] = useState(null)
+  const [generationMode, setGenerationMode] = useState('')
   const [generationNotice, setGenerationNotice] = useState('')
+  const [evaluationNotice, setEvaluationNotice] = useState('')
+  const [restoreNotice, setRestoreNotice] = useState('')
   const [index, setIndex] = useState(0)
   const [answer, setAnswer] = useState('')
   const [evals, setEvals] = useState([])
@@ -45,15 +62,20 @@ function MockInner({ resumes, selectedId, select }) {
         const answeredQuestions = new Set(savedAnswers.map((item) => item.question))
         const nextIndex = data.questions.findIndex((item) => !answeredQuestions.has(item.question))
         setRole(data.target_role)
+        setJd(data.job_description || '')
         setQuestions(data.questions)
         setSessionId(data.id)
+        setGenerationMode(data.generation_mode || 'saved')
+        setGenerationNotice(data.generation_notice || '')
         setEvals(savedAnswers.filter((item) => item.evaluation).map((item) => ({ ...item.evaluation, question: item.question })))
         setIndex(nextIndex === -1 ? data.questions.length : nextIndex)
         setCurrentEval(null)
         setAnswer('')
         setStarted(true)
+        setRestoreNotice('Your saved mock interview session was restored.')
       } catch {
         sessionStorage.removeItem(storageKey)
+        if (!cancelled) setRestoreNotice('A saved mock interview session could not be restored. Start a new one to continue.')
       } finally {
         if (!cancelled) setBusy(false)
       }
@@ -67,12 +89,17 @@ function MockInner({ resumes, selectedId, select }) {
     setBusy(true)
     setError('')
     setGenerationNotice('')
+    setEvaluationNotice('')
+    setRestoreNotice('')
+    setGenerationMode('')
     try {
-      const { data } = await careerApi.createQuestions({
+      const payload = {
         resume_id: selectedId,
         target_role: role,
         question_count: 6,
-      })
+      }
+      if (jd.trim().length >= 10) payload.job_description = jd.trim()
+      const { data } = await careerApi.createQuestions(payload)
       const generatedQuestions = data.questions || []
       if (!generatedQuestions.length || !data.session_id) {
         setStarted(false)
@@ -81,13 +108,14 @@ function MockInner({ resumes, selectedId, select }) {
       }
       setQuestions(generatedQuestions)
       setSessionId(data.session_id)
+      setGenerationMode(data.generation_mode || 'ai')
       setGenerationNotice(data.generation_notice || '')
       setIndex(0)
       setEvals([])
       setCurrentEval(null)
       setAnswer('')
       setStarted(true)
-      sessionStorage.setItem(storageKey, data.session_id)
+      if (storageKey) sessionStorage.setItem(storageKey, data.session_id)
       markProgress(user.id, 'interview')
     } catch (err) {
       setError(apiErrorMessage(err))
@@ -104,6 +132,7 @@ function MockInner({ resumes, selectedId, select }) {
     if (!q) return
     setBusy(true)
     setError('')
+    setEvaluationNotice('')
     try {
       const { data } = await careerApi.evaluateAnswer({
         question: q.question,
@@ -113,9 +142,14 @@ function MockInner({ resumes, selectedId, select }) {
         target_role: role,
         session_id: sessionId,
       })
+      if (!isValidEvaluation(data)) {
+        setError('The evaluation response was incomplete, so this answer was not marked as evaluated. Please try again.')
+        return
+      }
       const next = [...evals, { ...data, question: q.question }]
       setEvals(next)
       setCurrentEval(data)
+      setEvaluationNotice(data.evaluation_notice || '')
       markProgress(user.id, 'mock')
     } catch (err) {
       setError(apiErrorMessage(err))
@@ -130,15 +164,44 @@ function MockInner({ resumes, selectedId, select }) {
     setIndex((i) => i + 1)
   }
 
+  function startNewSession() {
+    if (storageKey) sessionStorage.removeItem(storageKey)
+    setStarted(false)
+    setQuestions([])
+    setEvals([])
+    setSessionId(null)
+    setGenerationMode('')
+    setGenerationNotice('')
+    setEvaluationNotice('')
+    setRestoreNotice('')
+    setError('')
+    setIndex(0)
+    setAnswer('')
+    setCurrentEval(null)
+  }
+
   const avg = evals.length ? Math.round(evals.reduce((s, x) => s + x.score, 0) / evals.length) : 0
   const weak = evals.filter((x) => x.score < 60)
+  const isProfileBased = generationMode === 'profile_based'
+  const isDemo = generationMode === 'demo'
+  const sourceLabel = isDemo
+    ? 'Demo mode — not AI-generated'
+    : isProfileBased
+    ? 'Profile-based fallback'
+    : generationMode === 'mixed'
+      ? 'Mixed sources'
+      : generationMode === 'saved'
+        ? 'Saved questions'
+        : generationMode === 'ai'
+          ? 'AI-generated'
+          : 'Generation source unavailable'
 
   return (
     <div>
       <PageHeader
         eyebrow="Practice"
-        title="AI mock interview"
-        description="Questions are generated from your resume and target role. Each answer is scored with feedback and weak areas."
+        title="Mock interview"
+        description="Uses the configured AI provider for role-specific questions and feedback. Any profile-based fallback is clearly identified."
       />
       {!started ? (
         <form className="grid gap-4 md:grid-cols-3" onSubmit={start}>
@@ -146,19 +209,25 @@ function MockInner({ resumes, selectedId, select }) {
           <Field label="Target role">
             <input className={inputClass()} required minLength={2} value={role} onChange={(e) => setRole(e.target.value)} />
           </Field>
+          <Field label="Optional job description">
+            <textarea className={inputClass('min-h-24')} value={jd} onChange={(e) => setJd(e.target.value)} />
+          </Field>
           <div className="flex items-end">
             <Button disabled={busy || !selectedId}>{busy ? 'Preparing…' : 'Start mock interview'}</Button>
           </div>
         </form>
       ) : null}
       {error ? <div className="mt-4"><Alert>{error}</Alert></div> : null}
-      {generationNotice ? <div className="mt-4"><Alert>{generationNotice}</Alert></div> : null}
+      {restoreNotice ? <div className="mt-4"><Alert type="success">{restoreNotice}</Alert></div> : null}
+      {generationNotice ? <div className="mt-4"><Alert type={generationMode === 'error' ? 'error' : 'success'}>{generationNotice}</Alert></div> : null}
+      {evaluationNotice ? <div className="mt-4"><Alert type="success">{evaluationNotice}</Alert></div> : null}
       {busy && !q ? <Spinner /> : null}
 
       {started && q && !finished ? (
         <Card className="mt-6 p-6">
           <div className="flex flex-wrap gap-2">
             <Chip tone="mint">Question {index + 1} of {questions.length}</Chip>
+            <Chip tone={isDemo || isProfileBased || generationMode === 'mixed' ? 'gold' : 'mint'}>{sourceLabel}</Chip>
             <Chip>{q.category}</Chip>
             <Chip tone="gold">{q.difficulty}</Chip>
             <Chip tone="blue">{q.topic}</Chip>
@@ -179,7 +248,12 @@ function MockInner({ resumes, selectedId, select }) {
           ) : (
             <div className="mt-4 space-y-3">
               <ScoreBadge score={currentEval.score} />
-              <p className="text-sm text-mint">{currentEval.verdict}</p>
+              <div className="flex flex-wrap gap-2">
+                <p className="text-sm text-mint">{currentEval.verdict}</p>
+                <Chip tone={currentEval.evaluation_mode === 'demo' || currentEval.evaluation_mode === 'profile_based' ? 'gold' : 'mint'}>
+                  {currentEval.evaluation_mode === 'demo' ? 'Demo evaluation — rule-based' : currentEval.evaluation_mode === 'profile_based' ? 'Profile-based evaluation' : 'AI evaluation'}
+                </Chip>
+              </div>
               <p className="text-white/70">{currentEval.feedback}</p>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
@@ -206,6 +280,11 @@ function MockInner({ resumes, selectedId, select }) {
           )}
         </Card>
       ) : null}
+      {started && !finished ? (
+        <Button className="mt-4" type="button" variant="ghost" disabled={busy} onClick={startNewSession}>
+          Start a new session
+        </Button>
+      ) : null}
 
       {finished ? (
         <Card className="mt-6 p-6">
@@ -224,14 +303,7 @@ function MockInner({ resumes, selectedId, select }) {
               </div>
             ))}
           </div>
-          <Button className="mt-4" variant="ghost" onClick={() => {
-            if (storageKey) sessionStorage.removeItem(storageKey)
-            setStarted(false)
-            setQuestions([])
-            setEvals([])
-            setSessionId(null)
-            setGenerationNotice('')
-          }}>
+          <Button className="mt-4" variant="ghost" onClick={startNewSession}>
             New session
           </Button>
         </Card>

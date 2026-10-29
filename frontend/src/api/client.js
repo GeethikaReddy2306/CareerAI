@@ -12,7 +12,7 @@ export function setToken(token) {
 }
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  baseURL: (import.meta.env.VITE_API_URL || '').trim(),
   timeout: 60000,
 })
 
@@ -67,7 +67,9 @@ export const careerApi = {
   getRoadmap: (resumeId) => api.get('/api/career/roadmap', { params: { resume_id: resumeId } }),
   updateRoadmapProgress: (roadmapId, completed_skills) => api.patch(`/api/career/roadmap/${roadmapId}/progress`, { completed_skills }),
   createQuestions: (payload) => api.post('/api/interview/questions', payload),
-  getQuestions: (resumeId) => api.get('/api/interview/questions', { params: { resume_id: resumeId } }),
+  getQuestions: (resumeId, filters = {}) => api.get('/api/interview/questions', {
+    params: { resume_id: resumeId, ...filters },
+  }),
   getInterviewSession: (sessionId) => api.get(`/api/interview/sessions/${sessionId}`),
   evaluateAnswer: (payload) => api.post('/api/interview/evaluate', payload),
 }

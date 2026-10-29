@@ -1,0 +1,11 @@
+INFO:     Started server process [33812]
+INFO:     Waiting for application startup.
+2026-10-29 14:03:38,141 [INFO] career_platform: Application startup: verified storage directories.
+2026-10-29 14:03:39,323 [INFO] career_platform: MongoDB connected successfully: db=careerai, host=mongodb+srv://geethikakotu3_db_user:****@management1.oqvubex.mongodb.net/Carr
+2026-10-29 14:03:40,452 [INFO] career_platform: MongoDB indexes verified/created.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+2026-10-29 14:03:40,488 [INFO] career_platform: MongoDB connection closed.
+2026-10-29 14:03:40,488 [INFO] career_platform: Application shutdown complete.
+INFO:     Application shutdown complete.

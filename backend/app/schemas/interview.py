@@ -30,8 +30,9 @@ class InterviewQuestionsResponse(BaseModel):
     session_id: str | None = None
     requested_count: int | None = Field(default=None, ge=0)
     returned_count: int = Field(default=0, ge=0, description="Number of validated unique questions returned")
-    generation_mode: str = Field(default="ai", description="ai or profile_based")
+    generation_mode: str = Field(default="ai", description="ai, demo, profile_based, saved, mixed, or error")
     generation_notice: str | None = Field(default=None, description="Safe explanation when AI generation was unavailable")
+    failure_category: str | None = Field(default=None, description="Safe provider failure category, when applicable")
 
 
 class MockAnswerRequest(BaseModel):
@@ -50,12 +51,19 @@ class MockAnswerEvaluation(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)
     missing_concepts: list[str] = Field(default_factory=list)
+    evaluation_mode: str = Field(default="ai", description="ai, demo, or profile_based")
+    evaluation_notice: str | None = None
+    failure_category: str | None = None
 
 
 class InterviewSessionResponse(BaseModel):
     id: str
     resume_id: str
     target_role: str
+    job_description: str | None = None
     questions: list[InterviewQuestionItem] = Field(default_factory=list)
     answers: list[dict[str, Any]] = Field(default_factory=list)
+    generation_mode: str = "unknown"
+    generation_notice: str | None = None
+    failure_category: str | None = None
 
